@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#16204a">
+<title>Buzzer</title>
+<style>
+  :root {
+    --bg: #eef0f7; --ink: #16204a; --muted: #5b6386; --line: #c9cde0;
+    --red: #d7263d; --red-deep: #8f1426; --gold: #f2b705; --gold-deep: #9a7300;
+    --idle: #9aa1bd; --idle-deep: #5f6684; --off: #3d4466;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e1430; --ink: #eef0f7; --muted: #98a0c4; --line: #2b3360; --idle: #4a527a; --idle-deep: #262c4d; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+    padding: env(safe-area-inset-top, 0px) 20px env(safe-area-inset-bottom, 0px);
+    display: flex; flex-direction: column; overscroll-behavior: none;
+    user-select: none; -webkit-user-select: none; touch-action: manipulation;
+  }
+  header { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; font-size: 1.1rem; }
+  #team { font-weight: 700; }
+  #conn { width: 12px; height: 12px; border-radius: 50%; background: var(--red); }
+  #conn.ok { background: #2bb673; }
+  main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; }
+
+  /* Écran d'entrée */
+  #join { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 12px; }
+  #join h1 { font-size: 2.4rem; line-height: 1; margin: 0 0 8px; }
+  #join input { font: inherit; font-size: 1.3rem; padding: 14px; border: 2px solid var(--line); border-radius: 10px; background: transparent; color: var(--ink); }
+  #join input:focus { outline: none; border-color: var(--ink); }
+  #join button { font: inherit; font-size: 1.3rem; font-weight: 700; padding: 14px; border: 0; border-radius: 10px; background: var(--ink); color: var(--bg); }
+  #err { color: var(--red); min-height: 1.2em; margin: 0; }
+  .hint { color: var(--muted); font-size: .95rem; margin: 0; }
+
+  /* Le buzzer */
+  #buzz {
+    --top: var(--idle); --side: var(--idle-deep);
+    width: min(78vw, 56vh); aspect-ratio: 1; border-radius: 50%; border: 0;
+    background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.35), transparent 45%), var(--top);
+    box-shadow: 0 14px 0 var(--side), 0 22px 30px rgba(0,0,0,.25);
+    transform: translateY(0); transition: transform 60ms, box-shadow 60ms;
+    color: #fff; font: inherit; font-size: clamp(2rem, 11vw, 3.4rem); font-weight: 800; letter-spacing: .02em;
+    touch-action: none;
+  }
+  #buzz.armed { --top: var(--red); --side: var(--red-deep); }
+  #buzz.pressed, #buzz.armed:active { transform: translateY(10px); box-shadow: 0 4px 0 var(--side), 0 8px 12px rgba(0,0,0,.25); }
+  #buzz.winner { --top: var(--gold); --side: var(--gold-deep); color: #2a1f00; }
+  #buzz.off { --top: var(--off); --side: #1f2440; }
+  #buzz:disabled { cursor: default; }
+  #status { font-size: 1.5rem; text-align: center; min-height: 2.2em; margin: 0; max-width: 22ch; }
+  #score { color: var(--muted); font-size: 1.1rem; margin: 0; }
+  #game[hidden], #join[hidden] { display: none; }
+  #game { display: flex; flex-direction: column; align-items: center; gap: 24px; }
+  #change { font: inherit; background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 8px; }
+  @media (prefers-reduced-motion: reduce) { #buzz { transition: none; } }
+</style>
+</head>
+<body>
+<header><span id="team"></span><span id="conn" title="Connexion"></span></header>
+<main>
+  <form id="join">
+    <h1>Blind test</h1>
+    <input id="name" maxlength="24" autocomplete="off" placeholder="Nom de l’équipe" aria-label="Nom de l’équipe" required>
+    <button type="submit">Rejoindre</button>
+    <p id="err"></p>
+    <p class="hint">Plusieurs téléphones peuvent rejoindre la même équipe avec le même nom.</p>
+  </form>
+
+  <section id="game" hidden>
+    <button id="buzz" disabled>…</button>
+    <p id="status" aria-live="assertive"></p>
+    <p id="score"></p>
+    <button id="change" type="button">Changer d’équipe</button>
+  </section>
+</main>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const socket = io({ auth: { role: 'player' }, transports: ['websocket', 'polling'] });
+let teamId = null, teamName = null, state = null, pending = false;
+
+// ----- Connexion / équipe -----
+function join(name) {
+  socket.emit('join', name, (res) => {
+    if (!res.ok) { $('err').textContent = res.error; return; }
+    teamId = res.teamId; teamName = res.name;
+    try { localStorage.setItem('buzzer-team', teamName); } catch {}
+    $('team').textContent = teamName;
+    $('join').hidden = true; $('game').hidden = false;
+    keepAwake(); render();
+  });
+}
+$('join').addEventListener('submit', (e) => { e.preventDefault(); join($('name').value); });
+$('change').addEventListener('click', () => {
+  teamId = null; $('game').hidden = true; $('join').hidden = false; $('team').textContent = '';
+  $('name').value = teamName || ''; $('name').focus();
+});
+
+socket.on('connect', () => {
+  $('conn').classList.add('ok');
+  let saved = null; try { saved = localStorage.getItem('buzzer-team'); } catch {}
+  if (teamName || saved) join(teamName || saved);       // reconnexion transparente
+});
+socket.on('disconnect', () => { $('conn').classList.remove('ok'); render(); });
+socket.on('state', (s) => { state = s; pending = false; render(); });
+socket.on('kicked', () => {
+  try { localStorage.removeItem('buzzer-team'); } catch {}
+  teamId = teamName = null; $('game').hidden = true; $('join').hidden = false;
+  $('err').textContent = 'Votre équipe a été retirée par l’animateur.';
+});
+
+// ----- Buzz -----
+// pointerdown plutôt que click : ~100 ms gagnées sur mobile
+$('buzz').addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if ($('buzz').disabled || pending) return;
+  pending = true;
+  $('buzz').classList.add('pressed');
+  if (navigator.vibrate) navigator.vibrate(40);
+  socket.emit('buzz', () => {});        // le rendu final vient de l'état diffusé
+  render();
+});
+document.addEventListener('pointerup', () => $('buzz').classList.remove('pressed'));
+document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// ----- Rendu -----
+function render() {
+  if (!teamId || !state) return;
+  const b = $('buzz'), st = $('status');
+  b.className = '';
+  const me = state.teams.find((t) => t.id === teamId);
+  $('score').textContent = me ? `${me.score} point${Math.abs(me.score) > 1 ? 's' : ''}` : '';
+  const mine = state.buzzes.find((x) => x.teamId === teamId);
+  const first = state.buzzes[0];
+
+  if (!socket.connected) { b.disabled = true; b.classList.add('off'); b.textContent = '…'; st.textContent = 'Connexion perdue, reconnexion en cours'; return; }
+  if (pending) { b.disabled = true; b.classList.add('armed', 'pressed'); b.textContent = 'BUZZ'; st.textContent = 'Envoyé'; return; }
+  if (state.excluded.includes(teamId)) { b.disabled = true; b.classList.add('off'); b.textContent = '✕'; st.textContent = 'Mauvaise réponse : vous ne jouez plus sur ce morceau'; return; }
+  if (mine && mine.rank === 1) { b.disabled = true; b.classList.add('winner'); b.textContent = '1er'; st.textContent = 'À vous de répondre'; return; }
+  if (mine) { b.disabled = true; b.classList.add('off'); b.textContent = `${mine.rank}e`; st.textContent = `Trop tard : ${first.name} a buzzé ${mine.deltaMs} ms avant vous`; return; }
+  if (state.phase === 'open') { b.disabled = false; b.classList.add('armed'); b.textContent = 'BUZZ'; st.textContent = ''; return; }
+  if (state.phase === 'buzzed') { b.disabled = false; b.classList.add('armed'); b.textContent = 'BUZZ'; st.textContent = `${first.name} a buzzé`; return; }
+  b.disabled = true; b.textContent = '…'; st.textContent = 'Attendez le prochain morceau';
+}
+
+// ----- Écran allumé -----
+let lock = null;
+async function keepAwake() {
+  try { if ('wakeLock' in navigator && !lock) { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => { lock = null; }); } } catch {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && teamId) keepAwake(); });
+</script>
+</body>
+</html>

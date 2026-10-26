@@ -1,0 +1,13 @@
+{
+  "name": "blindtest-buzzer",
+  "version": "1.0.0",
+  "description": "Buzzers sur téléphone pour blind test, arbitrage sur PC en réseau local",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "express": "4.21.2",
+    "qrcode": "1.5.4",
+    "socket.io": "4.8.1"
+  }
+}

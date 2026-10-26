@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buzzer : animateur</title>
+<style>
+  :root {
+    --bg: #eef0f7; --panel: #ffffff; --ink: #16204a; --muted: #5b6386; --line: #d3d7e8;
+    --red: #d7263d; --gold: #f2b705; --green: #1f9d63; --off: #8b91ad;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e1430; --panel: #161e44; --ink: #eef0f7; --muted: #98a0c4; --line: #2b3360; --off: #5a6290; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif; font-size: 18px; }
+  .wrap { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; padding: 24px; min-height: 100vh; }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+
+  /* Scène */
+  #stage { display: flex; flex-direction: column; gap: 20px; }
+  #first {
+    flex: 1; min-height: 46vh; border-radius: 18px; background: var(--panel); border: 3px solid var(--line);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px;
+  }
+  #first .who { font-size: clamp(3rem, 9vw, 8rem); font-weight: 800; line-height: .95; overflow-wrap: anywhere; }
+  #first .sub { font-size: 1.4rem; color: var(--muted); margin-top: 14px; }
+  #first.open { border-color: var(--red); }
+  #first.open .who { color: var(--red); }
+  #first.buzzed { border-color: var(--gold); background: var(--gold); color: #241a00; }
+  #first.buzzed .sub { color: #4d3b00; }
+  #first.flash { animation: flash 300ms ease-out; }
+  @keyframes flash { from { transform: scale(1.03); } to { transform: scale(1); } }
+  @media (prefers-reduced-motion: reduce) { #first.flash { animation: none; } }
+
+  .controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .controls button { font: inherit; font-size: 1.15rem; font-weight: 700; padding: 16px 10px; border-radius: 12px; border: 2px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+  .controls button kbd { display: block; font: inherit; font-size: .85rem; font-weight: 400; color: var(--muted); margin-top: 4px; }
+  #bOpen { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  #bOpen kbd { color: inherit; opacity: .7; }
+  #bOk { border-color: var(--green); color: var(--green); }
+  #bKo { border-color: var(--red); color: var(--red); }
+  button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+  button:disabled { opacity: .4; cursor: default; }
+
+  #order { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 8px; min-height: 2.4em; }
+  #order li { background: var(--panel); border: 2px solid var(--line); border-radius: 8px; padding: 6px 12px; }
+  #order li span { color: var(--muted); margin-left: 6px; }
+
+  /* Côté */
+  aside { display: flex; flex-direction: column; gap: 20px; }
+  .card { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 16px; }
+  .card h2 { font-size: 1.2rem; margin: 0 0 10px; }
+  #qr { width: 100%; max-width: 220px; display: block; margin: 0 auto 10px; background: #fff; border-radius: 8px; padding: 6px; }
+  #url { font-size: 1.3rem; font-weight: 700; text-align: center; margin: 0; word-break: break-all; }
+  #ipPick { width: 100%; font: inherit; margin-top: 8px; padding: 6px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 6px 2px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  td.n { width: 100%; overflow-wrap: anywhere; }
+  td.s { font-weight: 800; font-size: 1.3rem; text-align: right; padding-right: 8px; min-width: 2.2ch; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--off); margin-right: 8px; }
+  .dot.on { background: var(--green); }
+  tr.excl td.n { text-decoration: line-through; color: var(--muted); }
+  td button { font: inherit; width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+  .empty { color: var(--muted); margin: 0; }
+  .small { font: inherit; font-size: .9rem; background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; padding: 8px 0 0; }
+  #sound { font-size: .9rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section id="stage">
+    <div id="first"><div class="who">Prêt</div><div class="sub">Ouvrez les buzzers pour lancer le premier morceau</div></div>
+    <div class="controls">
+      <button id="bOpen">Nouveau morceau<kbd>Espace</kbd></button>
+      <button id="bOk">Bonne réponse<kbd>B</kbd></button>
+      <button id="bKo">Mauvaise réponse<kbd>M</kbd></button>
+      <button id="bClose">Fermer<kbd>F</kbd></button>
+    </div>
+    <ol id="order" aria-label="Ordre des buzz"></ol>
+    <span id="sound">Le son s’active au premier clic ou à la première touche.</span>
+  </section>
+
+  <aside>
+    <div class="card">
+      <h2>Rejoindre la partie</h2>
+      <img id="qr" alt="QR code de la page joueur">
+      <p id="url"></p>
+      <select id="ipPick" aria-label="Interface réseau" hidden></select>
+    </div>
+    <div class="card">
+      <h2>Équipes</h2>
+      <table><tbody id="teams"></tbody></table>
+      <p class="empty" id="noTeam">Aucune équipe pour l’instant.</p>
+      <button class="small" id="resetScores">Remettre les scores à zéro</button>
+    </div>
+  </aside>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const key = new URLSearchParams(location.search).get('key');
+const socket = io({ auth: { role: 'host', key }, transports: ['websocket', 'polling'] });
+let state = null, lastFirst = null, port = 3000;
+
+// ----- Son (WebAudio, aucun fichier) -----
+let ctx = null;
+function unlockAudio() { if (!ctx) { ctx = new (window.AudioContext || window.webkitAudioContext)(); $('sound').hidden = true; } }
+function beep() {
+  if (!ctx) return;
+  const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
+  o.type = 'square'; o.frequency.setValueAtTime(880, t); o.frequency.setValueAtTime(660, t + 0.12);
+  g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+  o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.36);
+}
+addEventListener('pointerdown', unlockAudio); addEventListener('keydown', unlockAudio);
+
+// ----- Actions -----
+const act = (ev, payload) => socket.emit(ev, payload);
+$('bOpen').onclick = () => act('host:open');
+$('bOk').onclick = () => act('host:correct');
+$('bKo').onclick = () => act('host:wrong');
+$('bClose').onclick = () => act('host:close');
+$('resetScores').onclick = () => { if (confirm('Remettre tous les scores à zéro ?')) act('host:reset-scores'); };
+addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.repeat) return;
+  const k = e.key.toLowerCase();
+  if (k === ' ') { e.preventDefault(); act('host:open'); }
+  else if (k === 'b') act('host:correct');
+  else if (k === 'm') act('host:wrong');
+  else if (k === 'f') act('host:close');
+});
+
+// ----- Réseau -----
+socket.on('connect_error', () => { $('first').querySelector('.sub').textContent = 'Serveur injoignable'; });
+socket.on('info', ({ ips, port: p }) => {
+  port = p;
+  const pick = $('ipPick');
+  pick.innerHTML = '';
+  for (const { ifname, ip } of ips) pick.add(new Option(`${ip} (${ifname})`, ip));
+  pick.hidden = ips.length < 2;
+  pick.onchange = () => showJoin(pick.value);
+  showJoin(ips[0]?.ip || location.hostname);
+});
+function showJoin(ip) {
+  $('qr').src = `/qr.svg?ip=${encodeURIComponent(ip)}`;
+  $('url').textContent = `${ip}:${port}`;
+}
+
+socket.on('state', (s) => { state = s; render(); });
+
+// ----- Rendu -----
+function render() {
+  const f = $('first'), who = f.querySelector('.who'), sub = f.querySelector('.sub');
+  const first = state.buzzes[0];
+  f.className = state.phase;
+
+  if (state.phase === 'buzzed' && first) {
+    who.textContent = first.name;
+    const n = state.buzzes.length;
+    sub.textContent = n > 1 ? `${state.buzzes[1].name} à ${state.buzzes[1].deltaMs} ms derrière` : `Morceau ${state.round}`;
+    const sig = state.round + ':' + first.teamId + ':' + state.excluded.length;
+    if (sig !== lastFirst) { lastFirst = sig; beep(); void f.offsetWidth; f.classList.add('flash'); }
+  } else if (state.phase === 'open') {
+    who.textContent = 'Buzzers ouverts';
+    const ex = state.excluded.length;
+    sub.textContent = `Morceau ${state.round}` + (ex ? ` · ${ex} équipe${ex > 1 ? 's' : ''} exclue${ex > 1 ? 's' : ''}` : '');
+  } else {
+    who.textContent = 'Fermé';
+    sub.textContent = state.round ? `Morceau ${state.round} terminé` : 'Ouvrez les buzzers pour lancer le premier morceau';
+  }
+
+  $('bOk').disabled = $('bKo').disabled = state.phase !== 'buzzed';
+  $('bClose').disabled = state.phase === 'closed';
+
+  const ol = $('order'); ol.innerHTML = '';
+  for (const b of state.buzzes) {
+    const li = document.createElement('li');
+    li.textContent = `${b.rank}. ${b.name}`;
+    if (b.rank > 1) { const s = document.createElement('span'); s.textContent = `+${b.deltaMs} ms`; li.append(s); }
+    ol.append(li);
+  }
+
+  const tb = $('teams'); tb.innerHTML = '';
+  $('noTeam').hidden = state.teams.length > 0;
+  for (const t of state.teams) {
+    const tr = document.createElement('tr');
+    if (state.excluded.includes(t.id)) tr.className = 'excl';
+    const n = document.createElement('td'); n.className = 'n';
+    const dot = document.createElement('span'); dot.className = 'dot' + (t.online ? ' on' : '');
+    dot.title = t.online ? `${t.online} téléphone(s) connecté(s)` : 'Hors ligne';
+    n.append(dot, t.name);
+    const s = document.createElement('td'); s.className = 's'; s.textContent = t.score;
+    const mk = (label, title, fn) => { const td = document.createElement('td'); const b = document.createElement('button'); b.textContent = label; b.title = title; b.onclick = fn; td.append(b); return td; };
+    const reopen = state.excluded.includes(t.id)
+      ? mk('↺', 'Réouvrir son buzzer', () => act('host:unexclude', { teamId: t.id }))
+      : document.createElement('td');
+    tr.append(n, s, reopen,
+      mk('−', 'Retirer un point', () => act('host:score', { teamId: t.id, delta: -1 })),
+      mk('+', 'Ajouter un point', () => act('host:score', { teamId: t.id, delta: 1 })),
+      mk('✕', 'Retirer l’équipe', () => { if (confirm(`Retirer l’équipe « ${t.name} » ?`)) act('host:kick', { teamId: t.id }); }));
+    tb.append(tr);
+  }
+}
+</script>
+</body>
+</html>
