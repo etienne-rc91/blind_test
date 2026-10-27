@@ -16,6 +16,7 @@ La console affiche l'URL joueur et l'URL animateur (`/host?key=…`). Ouvrez l'U
 - M : mauvaise réponse, le premier est exclu pour ce morceau et les buzzers rouvrent pour les autres.
 - F : fermer les buzzers.
 - ↺ (liste des équipes) : réouvre le buzzer d'une équipe exclue sur le morceau en cours.
+- Z : annule la dernière action de l'animateur (point, exclusion, remise à zéro, équipe retirée…). Plusieurs appuis remontent plus loin.
 - Les buzz arrivés après le premier restent enregistrés avec leur écart en ms.
 - Plusieurs téléphones peuvent rejoindre la même équipe avec le même nom. Seul le premier buzz de l'équipe compte.
 
@@ -32,5 +33,5 @@ La console affiche l'URL joueur et l'URL animateur (`/host?key=…`). Ouvrez l'U
 - La mise en veille de l'écran n'est pas bloquée sur les téléphones : l'API Wake Lock exige HTTPS, et la page est servie en HTTP sur l'IP locale.
   - Demandez d'allonger la mise en veille.
   - Une reconnexion automatique rejoint l'équipe en moins d'une seconde au réveil.
-- Les équipes et les scores sont sauvegardés dans `scores.json` et rechargés au redémarrage. Le morceau en cours, lui, repart fermé.
+- Les équipes et les scores sont sauvegardés dans `scores.json` et rechargés au redémarrage. Le morceau en cours, lui, repart fermé, et l'historique d'annulation est vidé.
 - Nouvelle partie : arrêtez le serveur et supprimez `scores.json` (ou utilisez « Remettre les scores à zéro »).

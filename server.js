@@ -13,6 +13,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const HOST_KEY = process.env.HOST_KEY || crypto.randomBytes(3).toString('hex');
 const MAX_NAME = 24;
 const SCORES_FILE = process.env.SCORES_FILE || path.join(__dirname, 'scores.json');
+const MAX_UNDO = 50;
 
 const app = express();
 const server = http.createServer(app);
@@ -71,6 +72,7 @@ function publicState() {
       deltaMs: Math.round((b.at - t0) * 10) / 10,
     })),
     excluded: [...round.excluded],
+    canUndo: history.length > 0,
     teams: [...teams.values()]
       .map((t) => ({ id: t.id, name: t.name, score: t.score, online: t.sockets.size }))
       .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'fr')),
@@ -115,6 +117,26 @@ function loadScores() {
   }
   if (Number.isInteger(data.round)) round.number = data.round;
   console.log(`  ${teams.size} équipe(s) et leurs scores rechargés depuis ${path.basename(SCORES_FILE)}`);
+}
+
+// ---------- Annuler ----------
+// Pile des états avant chaque action de l'animateur.
+const history = [];
+const snapshot = () => ({
+  teams: [...teams.values()].map(({ id, name, score }) => ({ id, name, score })),
+  round: { phase: round.phase, buzzes: round.buzzes.map((b) => ({ ...b })), excluded: [...round.excluded], number: round.number },
+});
+function restore(s) {
+  // Les équipes arrivées depuis sont conservées. Une équipe retirée revient, sans téléphone connecté.
+  for (const t of s.teams) {
+    const cur = teams.get(t.id);
+    if (cur) cur.score = t.score;
+    else teams.set(t.id, { ...t, sockets: new Set() });
+  }
+  round.phase = s.round.phase;
+  round.buzzes = s.round.buzzes.map((b) => ({ ...b }));
+  round.excluded = new Set(s.round.excluded);
+  round.number = s.round.number;
 }
 
 function openRound({ newSong }) {
@@ -162,16 +184,33 @@ io.on('connection', (socket) => {
   });
 
   // --- Hôte ---
-  const hostOnly = (fn) => (...args) => { if (isHost) { fn(...args); broadcast(); } };
+  // Chaque action qui change quelque chose est mémorisée pour pouvoir être annulée.
+  const hostOnly = (fn) => (...args) => {
+    if (!isHost) return;
+    const before = snapshot();
+    fn(...args);
+    if (JSON.stringify(before) !== JSON.stringify(snapshot())) {
+      history.push(before);
+      if (history.length > MAX_UNDO) history.shift();
+    }
+    broadcast();
+  };
 
+  socket.on('host:undo', () => {
+    if (!isHost || !history.length) return;
+    restore(history.pop());
+    broadcast();
+  });
   socket.on('host:open', hostOnly(() => openRound({ newSong: true })));     // nouveau morceau
   socket.on('host:close', hostOnly(() => { round.phase = 'closed'; }));
   socket.on('host:correct', hostOnly(() => {
+    if (round.phase !== 'buzzed') return;                                 // évite un double point (touche B pressée deux fois)
     const first = round.buzzes[0];
     if (first && teams.has(first.teamId)) teams.get(first.teamId).score += 1;
     round.phase = 'closed';
   }));
   socket.on('host:wrong', hostOnly(() => {                                 // exclut et relance pour les autres
+    if (round.phase !== 'buzzed') return;
     const first = round.buzzes[0];
     if (first) round.excluded.add(first.teamId);
     openRound({ newSong: false });

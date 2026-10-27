@@ -34,7 +34,7 @@
   @keyframes flash { from { transform: scale(1.03); } to { transform: scale(1); } }
   @media (prefers-reduced-motion: reduce) { #first.flash { animation: none; } }
 
-  .controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .controls { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
   .controls button { font: inherit; font-size: 1.15rem; font-weight: 700; padding: 16px 10px; border-radius: 12px; border: 2px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
   .controls button kbd { display: block; font: inherit; font-size: .85rem; font-weight: 400; color: var(--muted); margin-top: 4px; }
   #bOpen { background: var(--ink); color: var(--bg); border-color: var(--ink); }
@@ -77,6 +77,7 @@
       <button id="bOk">Bonne réponse<kbd>B</kbd></button>
       <button id="bKo">Mauvaise réponse<kbd>M</kbd></button>
       <button id="bClose">Fermer<kbd>F</kbd></button>
+      <button id="bUndo" title="Annuler la dernière action de l’animateur">Annuler<kbd>Z</kbd></button>
     </div>
     <ol id="order" aria-label="Ordre des buzz"></ol>
     <span id="sound">Le son s’active au premier clic ou à la première touche.</span>
@@ -123,6 +124,7 @@ $('bOpen').onclick = () => act('host:open');
 $('bOk').onclick = () => act('host:correct');
 $('bKo').onclick = () => act('host:wrong');
 $('bClose').onclick = () => act('host:close');
+$('bUndo').onclick = () => act('host:undo');
 $('resetScores').onclick = () => { if (confirm('Remettre tous les scores à zéro ?')) act('host:reset-scores'); };
 addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.repeat) return;
@@ -131,6 +133,7 @@ addEventListener('keydown', (e) => {
   else if (k === 'b') act('host:correct');
   else if (k === 'm') act('host:wrong');
   else if (k === 'f') act('host:close');
+  else if (k === 'z') act('host:undo');
 });
 
 // ----- Réseau -----
@@ -174,6 +177,7 @@ function render() {
 
   $('bOk').disabled = $('bKo').disabled = state.phase !== 'buzzed';
   $('bClose').disabled = state.phase === 'closed';
+  $('bUndo').disabled = !state.canUndo;
 
   const ol = $('order'); ol.innerHTML = '';
   for (const b of state.buzzes) {
