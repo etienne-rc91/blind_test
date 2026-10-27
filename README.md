@@ -32,4 +32,5 @@ La console affiche l'URL joueur et l'URL animateur (`/host?key=…`). Ouvrez l'U
 - La mise en veille de l'écran n'est pas bloquée sur les téléphones : l'API Wake Lock exige HTTPS, et la page est servie en HTTP sur l'IP locale.
   - Demandez d'allonger la mise en veille.
   - Une reconnexion automatique rejoint l'équipe en moins d'une seconde au réveil.
-- L'état (scores) est en mémoire : un redémarrage du serveur remet tout à zéro.
+- Les équipes et les scores sont sauvegardés dans `scores.json` et rechargés au redémarrage. Le morceau en cours, lui, repart fermé.
+- Nouvelle partie : arrêtez le serveur et supprimez `scores.json` (ou utilisez « Remettre les scores à zéro »).

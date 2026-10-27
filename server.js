@@ -2,6 +2,7 @@
 // Arbitrage à l'arrivée sur le serveur (horloge monotone) : équitable sur un Wi-Fi local homogène.
 const express = require('express');
 const http = require('http');
+const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
@@ -11,6 +12,7 @@ const { Server } = require('socket.io');
 const PORT = Number(process.env.PORT) || 3000;
 const HOST_KEY = process.env.HOST_KEY || crypto.randomBytes(3).toString('hex');
 const MAX_NAME = 24;
+const SCORES_FILE = process.env.SCORES_FILE || path.join(__dirname, 'scores.json');
 
 const app = express();
 const server = http.createServer(app);
@@ -74,7 +76,46 @@ function publicState() {
       .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'fr')),
   };
 }
-const broadcast = () => io.emit('state', publicState());
+const broadcast = () => { io.emit('state', publicState()); scheduleSave(); };
+
+// ---------- Sauvegarde des scores ----------
+// Les équipes et leurs scores survivent à un redémarrage. L'état du morceau en cours, lui, repart fermé.
+let lastSaved = '', saveTimer = null;
+function saveScores() {
+  const data = JSON.stringify({
+    round: round.number,
+    teams: [...teams.values()].map(({ id, name, score }) => ({ id, name, score })),
+  }, null, 2);
+  if (data === lastSaved) return;
+  try {
+    fs.writeFileSync(SCORES_FILE + '.tmp', data);
+    fs.renameSync(SCORES_FILE + '.tmp', SCORES_FILE);   // écriture atomique : jamais de fichier à moitié écrit
+    lastSaved = data;
+  } catch (e) {
+    console.error('  Sauvegarde des scores impossible :', e.message);
+  }
+}
+function scheduleSave() {
+  if (!saveTimer) saveTimer = setTimeout(() => { saveTimer = null; saveScores(); }, 300);
+}
+function loadScores() {
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(SCORES_FILE, 'utf8'));
+  } catch (e) {
+    if (e.code === 'ENOENT') return;
+    console.warn(`  Fichier de scores illisible, mis de côté dans ${SCORES_FILE}.bad`);
+    try { fs.renameSync(SCORES_FILE, SCORES_FILE + '.bad'); } catch {}
+    return;
+  }
+  for (const t of Array.isArray(data.teams) ? data.teams : []) {
+    if (typeof t.id === 'string' && typeof t.name === 'string' && Number.isInteger(t.score)) {
+      teams.set(t.id, { id: t.id, name: t.name, score: t.score, sockets: new Set() });
+    }
+  }
+  if (Number.isInteger(data.round)) round.number = data.round;
+  console.log(`  ${teams.size} équipe(s) et leurs scores rechargés depuis ${path.basename(SCORES_FILE)}`);
+}
 
 function openRound({ newSong }) {
   if (newSong) { round.excluded.clear(); round.number += 1; }
@@ -159,6 +200,10 @@ io.on('connection', (socket) => {
   });
 });
 
+// Ctrl+C : on écrit les derniers changements avant de quitter.
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { saveScores(); process.exit(0); });
+
+loadScores();
 server.listen(PORT, '0.0.0.0', () => {
   const ips = lanAddresses();
   console.log('\n  Blind test buzzer prêt\n');
