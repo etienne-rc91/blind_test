@@ -66,6 +66,11 @@
   .empty { color: var(--muted); margin: 0; }
   .small { font: inherit; font-size: .9rem; background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; padding: 8px 0 0; }
   #sound { font-size: .9rem; color: var(--muted); }
+  .stages { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stages button { font: inherit; font-weight: 700; padding: 10px 6px; border-radius: 10px; border: 2px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+  .stages button[aria-checked="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .hint { font-size: .9rem; color: var(--muted); margin: 10px 0 0; }
+  .hint a { color: inherit; }
 </style>
 </head>
 <body>
@@ -84,6 +89,16 @@
   </section>
 
   <aside>
+    <div class="card">
+      <h2>Grand écran</h2>
+      <div class="stages" role="radiogroup" aria-label="Étape affichée sur le Grand écran">
+        <button data-stage="setup" role="radio">Installation</button>
+        <button data-stage="play" role="radio">Jeu</button>
+        <button data-stage="summary" role="radio">Bilan</button>
+        <button data-stage="final" role="radio">Fin</button>
+      </div>
+      <p class="hint">À ouvrir sur le projecteur : <a id="screenLink" href="/screen" target="_blank">/screen</a></p>
+    </div>
     <div class="card">
       <h2>Rejoindre la partie</h2>
       <img id="qr" alt="QR code de la page joueur">
@@ -125,6 +140,7 @@ $('bOk').onclick = () => act('host:correct');
 $('bKo').onclick = () => act('host:wrong');
 $('bClose').onclick = () => act('host:close');
 $('bUndo').onclick = () => act('host:undo');
+for (const b of document.querySelectorAll('[data-stage]')) b.onclick = () => act('host:stage', { stage: b.dataset.stage });
 $('resetScores').onclick = () => { if (confirm('Remettre tous les scores à zéro ?')) act('host:reset-scores'); };
 addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.repeat) return;
@@ -145,9 +161,13 @@ socket.on('info', ({ ips, port: p }) => {
   for (const { ifname, ip } of ips) pick.add(new Option(`${ip} (${ifname})`, ip));
   pick.hidden = ips.length < 2;
   pick.onchange = () => showJoin(pick.value);
-  showJoin(ips[0]?.ip || location.hostname);
+  // Le Grand écran affiche la même adresse que la Régie : on garde le choix déjà fait s'il existe encore.
+  const saved = state?.joinIp && ips.some((i) => i.ip === state.joinIp) ? state.joinIp : null;
+  if (saved) pick.value = saved;
+  showJoin(saved || ips[0]?.ip || location.hostname);
 });
 function showJoin(ip) {
+  if (ip !== state?.joinIp && /^[\d.]+$|^localhost$/.test(ip)) act('host:join-ip', { ip });
   $('qr').src = `/qr.svg?ip=${encodeURIComponent(ip)}`;
   $('url').textContent = `${ip}:${port}`;
 }
@@ -178,6 +198,7 @@ function render() {
   $('bOk').disabled = $('bKo').disabled = state.phase !== 'buzzed';
   $('bClose').disabled = state.phase === 'closed';
   $('bUndo').disabled = !state.canUndo;
+  for (const b of document.querySelectorAll('[data-stage]')) b.setAttribute('aria-checked', String(b.dataset.stage === state.stage));
 
   const ol = $('order'); ol.innerHTML = '';
   for (const b of state.buzzes) {

@@ -10,6 +10,19 @@ Les téléphones servent de buzzers et le PC arbitre. Aucune dépendance à inte
 
 La console affiche l'URL joueur et l'URL animateur (`/host?key=…`). Ouvrez l'URL animateur sur le PC, et les joueurs scannent le QR code.
 
+## Grand écran
+Le Grand écran est la page projetée derrière l'animateur, face aux équipes. Il n'a aucun bouton : c'est la Régie qui choisit ce qu'il affiche.
+
+1. Sur le PC, ouvrez `http://localhost:3000/screen` dans une seconde fenêtre (lien « /screen » dans la Régie), glissez-la sur le projecteur et passez-la en plein écran (F11, ou ⌃⌘F sur Mac).
+2. Dans la Régie, bloc « Grand écran », choisissez l'étape :
+   - **Installation** : QR code en grand et équipes qui rejoignent la partie.
+   - **Jeu** : classement en direct et équipe qui vient de buzzer.
+   - **Bilan** : tableau des scores.
+   - **Fin** : podium. Les ex aequo partagent la même marche (12, 12 et 10 points donnent les places 1, 1 et 2) et toutes les équipes des trois premières places montent sur le podium.
+3. Changer d'étape s'annule avec Z. L'étape est sauvegardée : un Grand écran rechargé ou un serveur redémarré revient au bon endroit.
+
+Le Grand écran affiche la même adresse que celle choisie dans la Régie (menu des interfaces réseau).
+
 ## Déroulé
 - Espace : nouveau morceau, ouvre les buzzers et efface les exclusions.
 - B : bonne réponse, +1 point au premier, buzzers fermés.

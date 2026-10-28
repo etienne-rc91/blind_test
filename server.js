@@ -100,11 +100,11 @@ io.on('connection', (socket) => {
   socket.data.role = isHost ? 'host' : role === 'screen' ? 'screen' : 'player';
   socket.data.teamId = null;
 
+  socket.emit('state', game.publicState({ role: socket.data.role }));   // avant 'info' : la Régie connaît déjà joinIp
   if (socket.data.role !== 'player') {
     socket.join(socket.data.role === 'host' ? 'hosts' : 'screens');
     socket.emit('info', { ips: lanAddresses(), port: PORT });
   }
-  socket.emit('state', game.publicState({ role: socket.data.role }));
 
   // --- Joueurs ---
   socket.on('join', (rawName, ack = () => {}) => {

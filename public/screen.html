@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buzzer : Grand écran</title>
+<style>
+  /* Projeté dans une salle sombre : thème sombre par défaut, clair si le système le demande. */
+  :root {
+    --bg: #0b1029; --panel: #151c42; --ink: #f3f4fb; --muted: #9aa2c8; --line: #2a3263;
+    --red: #ff4d5e; --gold: #f2b705; --gold-ink: #241a00; --green: #2bd38a; --off: #59608a;
+    --silver: #c4cad8; --bronze: #d38b4f;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #eef0f7; --panel: #ffffff; --ink: #16204a; --muted: #5b6386; --line: #d3d7e8; --red: #d7263d; --green: #1f9d63; --off: #8b91ad; color-scheme: light; }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink); overflow: hidden; cursor: none;
+    font-family: "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+    font-size: clamp(16px, 2.2vh, 40px);
+  }
+  .stage { position: absolute; inset: 0; padding: 4vh 4vw; display: flex; flex-direction: column; gap: 3vh; }
+  .stage[hidden] { display: none; }
+  h1 { margin: 0; font-size: 6vh; line-height: 1; font-weight: 800; letter-spacing: .01em; }
+  h1 small { display: block; font-size: 2.6vh; font-weight: 600; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 1vh; }
+
+  /* Installation */
+  #setup .cols { flex: 1; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5vw; align-items: center; min-height: 0; }
+  #qr { width: min(62vh, 42vw); aspect-ratio: 1; background: #fff; border-radius: 2vh; padding: 2vh; display: block; }
+  #url { font-size: 5.5vh; font-weight: 800; text-align: center; margin: 2vh 0 0; }
+  #urlHint { font-size: 2.6vh; color: var(--muted); text-align: center; margin: .6vh 0 0; }
+  #joined { align-self: stretch; display: flex; flex-direction: column; min-height: 0; }
+  #joined h2 { font-size: 4vh; margin: 0 0 2vh; }
+  #joinedList { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 1.6vh; overflow: hidden; }
+  #joinedList li { background: var(--panel); border: .3vh solid var(--line); border-radius: 1.4vh; padding: 1.4vh 2.4vh; font-size: 4vh; font-weight: 700; display: flex; align-items: center; gap: 1.4vh; animation: pop 400ms ease-out; }
+  .dot { width: 1.6vh; height: 1.6vh; border-radius: 50%; background: var(--off); flex: none; }
+  .dot.on { background: var(--green); }
+  .empty { color: var(--muted); font-size: 3.4vh; margin: 0; }
+
+  /* Jeu */
+  #banner { border-radius: 2vh; padding: 2.4vh 3vw; display: flex; align-items: baseline; justify-content: space-between; gap: 3vw; border: .4vh solid var(--line); background: var(--panel); }
+  #banner .who { font-size: 9vh; font-weight: 800; line-height: 1; overflow-wrap: anywhere; }
+  #banner .sub { font-size: 3vh; color: var(--muted); white-space: nowrap; }
+  #banner.open { border-color: var(--red); }
+  #banner.open .who { color: var(--red); }
+  #banner.buzzed { background: var(--gold); border-color: var(--gold); color: var(--gold-ink); }
+  #banner.buzzed .sub { color: var(--gold-ink); }
+  #banner.flash { animation: flash 400ms ease-out; }
+  #ranking { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; display: grid; gap: 1.2vh; overflow: hidden; }
+  #ranking.dense li { font-size: 3.4vh; }
+  #ranking li { display: grid; grid-template-columns: 8vh minmax(0, 1fr) auto; align-items: center; gap: 2vw; background: var(--panel); border-radius: 1.4vh; padding: 0 2.4vw; font-size: 5vh; font-weight: 700; }
+  #ranking li.buzzing { outline: .5vh solid var(--gold); }
+  #ranking .place { color: var(--muted); font-weight: 800; }
+  #ranking .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #ranking .score { font-weight: 800; font-variant-numeric: tabular-nums; }
+  #ranking .score.bump { animation: bump 500ms ease-out; }
+
+  /* Bilan */
+  #summary .wrap { flex: 1; min-height: 0; overflow: hidden; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0 1vh; font-size: 4vh; }
+  th { text-align: right; color: var(--muted); font-size: 2.6vh; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 0 1.6vw; }
+  th:first-child, th.name, td.name { text-align: left; }
+  td { background: var(--panel); padding: 1.4vh 1.6vw; text-align: right; font-variant-numeric: tabular-nums; }
+  td:first-child { border-radius: 1.4vh 0 0 1.4vh; color: var(--muted); font-weight: 800; width: 1%; }
+  td:last-child { border-radius: 0 1.4vh 1.4vh 0; font-weight: 800; }
+  td.name { font-weight: 700; }
+  th.current, td.current { color: var(--gold); }
+
+  /* Fin */
+  #podium { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 2vw; min-height: 0; }
+  .step { display: flex; flex-direction: column; justify-content: flex-end; min-height: 0; height: 100%; }
+  .step .names { display: flex; flex-direction: column; gap: .8vh; padding-bottom: 2vh; text-align: center; overflow: hidden; }
+  .step .names div { font-size: 4.6vh; font-weight: 800; line-height: 1.05; overflow-wrap: anywhere; }
+  .step .names .pts { font-size: 3vh; font-weight: 600; color: var(--muted); }
+  .step.many .names div { font-size: 3.2vh; }
+  .step .block { border-radius: 2vh 2vh 0 0; display: flex; align-items: flex-start; justify-content: center; padding-top: 2vh; font-size: 12vh; font-weight: 800; color: var(--gold-ink); }
+  .step.p1 .block { height: 42vh; background: var(--gold); }
+  .step.p2 .block { height: 30vh; background: var(--silver); }
+  .step.p3 .block { height: 20vh; background: var(--bronze); }
+  .step.none .block { visibility: hidden; }
+  .step { animation: rise 700ms ease-out both; }
+  .step.p2 { animation-delay: 300ms; } .step.p1 { animation-delay: 700ms; }
+
+  #lost { position: fixed; inset: 0; background: rgba(0,0,0,.8); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 6vh; font-weight: 800; }
+  #lost[hidden] { display: none; }
+
+  @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @keyframes flash { from { transform: scale(1.04); } to { transform: scale(1); } }
+  @keyframes bump { 0% { color: var(--green); transform: scale(1.4); } 100% { transform: scale(1); } }
+  @keyframes rise { from { transform: translateY(20vh); opacity: 0; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+</style>
+</head>
+<body>
+<section class="stage" id="setup" hidden>
+  <h1><small>Blind test</small>Rejoignez la partie</h1>
+  <div class="cols">
+    <div>
+      <img id="qr" alt="QR code pour rejoindre la partie">
+      <p id="url"></p>
+      <p id="urlHint">Scannez le QR code ou tapez cette adresse, puis choisissez le nom de votre équipe.</p>
+    </div>
+    <div id="joined">
+      <h2 id="joinedTitle">Équipes</h2>
+      <ul id="joinedList"></ul>
+      <p class="empty" id="joinedEmpty">En attente des équipes…</p>
+    </div>
+  </div>
+</section>
+
+<section class="stage" id="play" hidden>
+  <h1 id="playTitle"><small>Blind test</small>Classement</h1>
+  <div id="banner"><span class="who"></span><span class="sub"></span></div>
+  <ol id="ranking"></ol>
+</section>
+
+<section class="stage" id="summary" hidden>
+  <h1><small>Blind test</small>Bilan</h1>
+  <div class="wrap"><table><thead id="sumHead"></thead><tbody id="sumBody"></tbody></table></div>
+</section>
+
+<section class="stage" id="final" hidden>
+  <h1><small>Fin de la partie</small>Podium</h1>
+  <div id="podium"></div>
+</section>
+
+<div id="lost" hidden>Connexion au serveur perdue…</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const socket = io({ auth: { role: 'screen' }, transports: ['websocket', 'polling'] });
+let state = null, info = null, lastBuzz = null;
+const prevScores = new Map();
+
+socket.on('connect', () => { $('lost').hidden = true; });
+socket.on('disconnect', () => { $('lost').hidden = false; });
+socket.on('info', (i) => { info = i; render(); });
+socket.on('state', (s) => { state = s; render(); });
+
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const pts = (n) => `${n} point${Math.abs(n) > 1 ? 's' : ''}`;
+
+function render() {
+  if (!state) return;
+  for (const id of ['setup', 'play', 'summary', 'final']) $(id).hidden = state.stage !== id;
+  if (state.stage === 'setup') renderSetup();
+  else if (state.stage === 'play') renderPlay();
+  else if (state.stage === 'summary') renderSummary();
+  else if (state.stage === 'final') renderFinal();
+}
+
+function renderSetup() {
+  const ip = state.joinIp || info?.ips?.[0]?.ip;
+  if (ip && info) {
+    const src = `/qr.svg?ip=${encodeURIComponent(ip)}`;
+    if ($('qr').getAttribute('src') !== src) $('qr').src = src;
+    $('url').textContent = `${ip}:${info.port}`;
+  }
+  const list = $('joinedList');
+  const known = new Set([...list.children].map((li) => li.dataset.id));
+  const ids = new Set(state.teams.map((t) => t.id));
+  for (const li of [...list.children]) if (!ids.has(li.dataset.id)) li.remove();
+  // Ordre d'arrivée conservé : les nouvelles équipes s'ajoutent à la fin, avec une petite animation.
+  for (const t of state.teams) {
+    let li = known.has(t.id) ? list.querySelector(`[data-id="${CSS.escape(t.id)}"]`) : null;
+    if (!li) { li = el('li'); li.dataset.id = t.id; li.append(el('span', 'dot'), el('span')); list.append(li); }
+    li.firstChild.className = 'dot' + (t.online ? ' on' : '');
+    li.lastChild.textContent = t.name;
+  }
+  $('joinedEmpty').hidden = state.teams.length > 0;
+  $('joinedTitle').textContent = state.teams.length ? `${state.teams.length} équipe${state.teams.length > 1 ? 's' : ''}` : 'Équipes';
+}
+
+function renderPlay() {
+  const b = $('banner'), who = b.querySelector('.who'), sub = b.querySelector('.sub');
+  const first = state.buzzes[0];
+  b.className = state.phase;
+  if (state.phase === 'buzzed' && first) {
+    who.textContent = first.name;
+    sub.textContent = `Morceau ${state.round}`;
+    const sig = `${state.round}:${first.teamId}:${state.excluded.length}`;
+    if (sig !== lastBuzz) { lastBuzz = sig; void b.offsetWidth; b.classList.add('flash'); }
+  } else if (state.phase === 'open') {
+    who.textContent = 'Buzzez !';
+    sub.textContent = `Morceau ${state.round}`;
+  } else {
+    who.textContent = state.round ? 'En attente du prochain morceau' : 'La partie va commencer';
+    sub.textContent = state.round ? `Morceau ${state.round} terminé` : '';
+  }
+
+  const ol = $('ranking'); ol.innerHTML = '';
+  // Au moins 7 lignes de place : peu d'équipes → lignes confortables, beaucoup → elles se resserrent.
+  ol.style.gridTemplateRows = `repeat(${Math.max(7, state.teams.length)}, minmax(0, 1fr))`;
+  ol.classList.toggle('dense', state.teams.length > 10);
+  for (const t of state.teams) {
+    const li = el('li');
+    if (state.phase === 'buzzed' && first?.teamId === t.id) li.className = 'buzzing';
+    const score = el('span', 'score', t.score);
+    if (prevScores.has(t.id) && prevScores.get(t.id) !== t.score) score.classList.add('bump');
+    prevScores.set(t.id, t.score);
+    li.append(el('span', 'place', t.place), el('span', 'name', t.name), score);
+    ol.append(li);
+  }
+}
+
+function renderSummary() {
+  const head = $('sumHead'), body = $('sumBody');
+  head.innerHTML = ''; body.innerHTML = '';
+  const tr = el('tr');
+  tr.append(el('th', null, '#'), el('th', 'name', 'Équipe'), el('th', null, 'Total'));
+  head.append(tr);
+  for (const t of state.teams) {
+    const r = el('tr');
+    r.append(el('td', null, t.place), el('td', 'name', t.name), el('td', null, t.score));
+    body.append(r);
+  }
+}
+
+function renderFinal() {
+  // Podium : toutes les équipes des places 1 à 3 (la place vient du serveur). Affichage 2 – 1 – 3.
+  const byPlace = { 1: [], 2: [], 3: [] };
+  for (const t of state.teams) if (t.place <= 3) byPlace[t.place].push(t);
+  const box = $('podium');
+  const sig = JSON.stringify(byPlace);
+  if (box.dataset.sig === sig) return;          // ne pas rejouer l'animation à chaque état reçu
+  box.dataset.sig = sig; box.innerHTML = '';
+  for (const p of [2, 1, 3]) {
+    const teams = byPlace[p];
+    const step = el('div', `step p${p}` + (teams.length ? '' : ' none') + (teams.length > 3 ? ' many' : ''));
+    const names = el('div', 'names');
+    for (const t of teams) names.append(el('div', null, t.name));
+    if (teams.length) names.append(el('div', 'pts', pts(teams[0].score)));
+    step.append(names, el('div', 'block', p));
+    box.append(step);
+  }
+}
+</script>
+</body>
+</html>
