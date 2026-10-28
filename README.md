@@ -126,6 +126,7 @@ Le Grand écran affiche la même adresse que celle choisie dans la Régie (menu 
 - Les manches importées, la manche en cours et l'étape du Grand écran sont aussi sauvegardées dans `scores.json`.
 - Nouvelle partie : arrêtez le serveur et supprimez `scores.json` (ou utilisez « Remettre les scores à zéro »).
 - Spotify : si le même compte est utilisé ailleurs en même temps (téléphone), il prend la main sur la lecture.
+- Création et la Régie sont deux appareils Spotify du même compte : écouter un titre dans Création pendant la soirée coupe la lecture de la Régie.
 - Spotify n’est pas garanti sur Safari (Chrome recommandé).
 - Si Spotify perd le morceau, la Régie affiche une erreur : concluez avec B ou F.
 - Pendant une panne Spotify, le morceau fichier suivant peut démarrer avec quelques secondes de retard.
