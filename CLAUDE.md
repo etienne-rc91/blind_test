@@ -56,10 +56,22 @@ Conception détaillée : `docs/superpowers/specs/2026-10-28-grand-ecran-manches-
 
 ```
 buzzer/
-├── server.js            Tout le serveur : routes Express, état du jeu, sockets, sauvegarde, annulation
+├── server.js            Serveur : routes Express, API /api (parties, images), sockets, sauvegarde
+├── lib/
+│   ├── game.js          État du jeu et règles (manches, QCM, annulation, nouvelle soirée), sans réseau
+│   ├── ranking.js       Classement dense et podium
+│   ├── csv.js           Décodage (UTF-8 / Windows-1252) et parsing CSV
+│   ├── game-file.js     CSV ↔ manches (validation stricte ou brouillon), écriture CSV
+│   ├── parties.js       Dossier parties/ : lister, lire, enregistrer, renommer, supprimer, importer
+│   └── live-edit.js     Ce qui peut s'appliquer à chaud à la partie en cours
 ├── public/
-│   ├── host.html        Régie (PC) : contrôles clavier, QR code, liste des équipes
-│   └── player.html      Buzzer (téléphone)
+│   ├── host.html        Régie (PC) : contrôles clavier, manches, équipes
+│   ├── player.html      Buzzer (téléphone)
+│   ├── screen.html      Grand écran (projecteur)
+│   ├── parties.html     Sélection de la partie (clé hôte)
+│   └── creation.html    Création / modification d'une partie (clé hôte)
+├── parties/             Une partie = un fichier CSV (ignoré par git)
+├── images/              Images des questions QCM (ignoré par git)
 ├── scores.json          Sauvegarde des équipes et scores (généré, ignoré par git)
 ├── package.json
 └── README.md            Mode d'emploi pour l'animateur + check-list salle

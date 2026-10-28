@@ -9,13 +9,17 @@ const crypto = require('crypto');
 const QRCode = require('qrcode');
 const { Server } = require('socket.io');
 const { createGame } = require('./lib/game');
-const { decodeCsvBytes, parseCsv } = require('./lib/csv');
-const { buildSections, isSafeImageName } = require('./lib/game-file');
+const { isSafeImageName } = require('./lib/game-file');
+const { createPartiesStore, cleanPartieName } = require('./lib/parties');
+const { checkLiveEdit } = require('./lib/live-edit');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST_KEY = process.env.HOST_KEY || crypto.randomBytes(3).toString('hex');
 const SCORES_FILE = process.env.SCORES_FILE || path.join(__dirname, 'scores.json');
 const IMAGES_DIR = process.env.IMAGES_DIR || path.join(__dirname, 'images');
+const PARTIES_DIR = process.env.PARTIES_DIR || path.join(__dirname, 'parties');
+const IMAGE_TYPES = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
+const MAX_IMAGE = 10 * 1024 * 1024;
 
 const app = express();
 const server = http.createServer(app);
@@ -41,6 +45,13 @@ app.get('/host', (req, res) => {
   if (req.query.key !== HOST_KEY) return res.status(403).send('Clé hôte invalide. Elle est affichée dans la console du serveur.');
   res.sendFile(path.join(__dirname, 'public', 'host.html'));
 });
+// Pages de préparation : réservées à l'animateur, comme la Régie.
+for (const page of ['parties', 'creation']) {
+  app.get(`/${page}`, (req, res) => {
+    if (req.query.key !== HOST_KEY) return res.status(403).send('Clé hôte invalide. Elle est affichée dans la console du serveur.');
+    res.sendFile(path.join(__dirname, 'public', `${page}.html`));
+  });
+}
 app.get('/screen', (req, res) => res.sendFile(path.join(__dirname, 'public', 'screen.html')));
 app.get('/qr.svg', async (req, res) => {
   const ip = String(req.query.ip || (lanAddresses()[0] || {}).ip || 'localhost');
@@ -94,11 +105,111 @@ function loadScores() {
   console.log(`  ${teams} équipe(s) et leurs scores rechargés depuis ${path.basename(SCORES_FILE)}`);
 }
 
+// ---------- Parties (API HTTP, réservée à l'animateur) ----------
+fs.mkdirSync(IMAGES_DIR, { recursive: true });
+const parties = createPartiesStore({ dir: PARTIES_DIR, imageExists: (name) => isSafeImageName(name) && fs.existsSync(path.join(IMAGES_DIR, name)) });
+const sameName = (a, b) => a != null && b != null && a.normalize('NFC').toLowerCase() === b.normalize('NFC').toLowerCase();
+const fail = (res, r) => res.status(r.status || 400).json({ error: r.error });
+
+const api = express.Router();
+api.use((req, res, next) => (req.get('x-host-key') === HOST_KEY ? next() : res.status(403).json({ error: 'Clé hôte invalide.' })));
+api.use(express.json({ limit: '2mb' }));
+
+api.get('/parties', (req, res) => {
+  const { partieName } = game.getLive();
+  res.json({ current: partieName, teamCount: game.publicState({ role: 'host' }).teams.length, parties: parties.list() });
+});
+
+api.get('/parties/:name', (req, res) => {
+  const r = parties.read(req.params.name);
+  return r.ok ? res.json(r) : fail(res, r);
+});
+
+// Enregistrer (overwrite) ou Enregistrer sous / nouvelle partie (sans overwrite).
+// La partie en cours est vérifiée avant toute écriture : un refus ne touche ni au fichier ni au jeu.
+api.put('/parties/:name', (req, res) => {
+  const { sections, overwrite } = req.body || {};
+  const live = game.getLive();
+  const isCurrent = overwrite === true && sameName(cleanPartieName(req.params.name), live.partieName);
+  let warnings = [];
+  if (isCurrent && Array.isArray(sections)) {
+    const check = checkLiveEdit({ oldSections: live.sections, newSections: sections, progress: live.progress, currentSection: live.currentSection, qcmStep: live.qcmStep });
+    if (!check.ok) return res.status(409).json({ error: check.error });
+    warnings = check.warnings;
+  }
+  const r = parties.save(req.params.name, sections, { overwrite: overwrite === true });
+  if (!r.ok) return fail(res, r);
+  let applied = false;
+  if (isCurrent) {
+    if (r.problems.length) warnings.push('La partie est incomplète : le jeu continue avec la version précédente.');
+    else {
+      game.replaceSections(parties.read(r.name).sections);
+      applied = true;
+      broadcast();
+    }
+  }
+  res.json({ ok: true, name: r.name, problems: r.problems, applied, warnings });
+});
+
+api.post('/parties/:name/rename', (req, res) => {
+  const r = parties.rename(req.params.name, req.body?.to);
+  if (!r.ok) return fail(res, r);
+  if (sameName(cleanPartieName(req.params.name), game.getLive().partieName)) { game.setPartieName(r.name); broadcast(); }
+  res.json(r);
+});
+
+api.delete('/parties/:name', (req, res) => {
+  if (sameName(cleanPartieName(req.params.name), game.getLive().partieName)) {
+    return res.status(409).json({ error: 'C’est la partie en cours : choisissez-en une autre avant de la supprimer.' });
+  }
+  const r = parties.remove(req.params.name);
+  return r.ok ? res.json(r) : fail(res, r);
+});
+
+// Jouer = nouvelle soirée : équipes, scores et avancement repartent de zéro.
+api.post('/parties/:name/play', (req, res) => {
+  const r = parties.read(req.params.name);
+  if (!r.ok) return fail(res, r);
+  if (r.problems.length) return res.status(422).json({ error: `Partie incomplète : ${r.problems.join(' ; ')}.` });
+  const { kickedSockets } = game.newEvening({ name: r.name, sections: r.sections });
+  for (const sid of kickedSockets) {
+    const sock = io.sockets.sockets.get(sid);
+    if (sock) { sock.data.teamId = null; sock.emit('kicked'); }
+  }
+  broadcast();
+  res.json({ ok: true });
+});
+
+const rawBody = (limit) => express.raw({ type: () => true, limit });
+api.post('/parties-import', rawBody('1mb'), (req, res) => {
+  const r = parties.importCsv(req.query.name, Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
+  return r.ok ? res.json(r) : fail(res, r);
+});
+
+// Image choisie dans Création : copiée dans images/ sous un nom sûr ; même nom et même contenu → réutilisée.
+api.post('/images', rawBody(MAX_IMAGE), (req, res) => {
+  const base = path.basename(String(req.query.filename || '')).replace(/[^\w.-]/g, '_').replace(/^\.+/, '');
+  const m = base.match(/^(.+)\.([A-Za-z0-9]+)$/);
+  if (!m || !IMAGE_TYPES.includes(m[2].toLowerCase())) return res.status(400).json({ error: 'Format d’image non accepté (png, jpg, gif, webp ou svg).' });
+  if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'Image vide.' });
+  for (let n = 1; ; n += 1) {
+    const name = n === 1 ? base : `${m[1]}-${n}.${m[2]}`;
+    const file = path.join(IMAGES_DIR, name);
+    if (!fs.existsSync(file)) { fs.writeFileSync(file, req.body); return res.json({ ok: true, name }); }
+    if (fs.readFileSync(file).equals(req.body)) return res.json({ ok: true, name });
+  }
+});
+
+api.use((err, req, res, next) => {   // corps trop gros ou JSON illisible
+  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Fichier trop gros (10 Mo maximum pour une image).' });
+  res.status(400).json({ error: 'Requête invalide.' });
+});
+app.use('/api', api);
+
 // ---------- Sockets ----------
 // Un client peut envoyer n'importe quoi à la place de la fonction de réponse : on ne l'appelle que si c'en est une.
 const reply = (ack) => (typeof ack === 'function' ? ack : () => {});
 const HOST_ACTIONS = ['open', 'close', 'correct', 'wrong', 'unexclude', 'score', 'kick', 'reset-scores', 'stage', 'join-ip', 'section', 'qcm', 'countdown'];
-const imageExists = (name) => isSafeImageName(name) && fs.existsSync(path.join(IMAGES_DIR, name));
 
 io.on('connection', (socket) => {
   const { role, key } = socket.handshake.auth || {};
@@ -146,17 +257,6 @@ io.on('connection', (socket) => {
       broadcast();
     });
   }
-  // Import du fichier de partie : la Régie envoie les octets bruts, le serveur décode, vérifie et répond.
-  socket.on('host:import', (bytes, ack = () => {}) => {
-    if (!isHost || typeof ack !== 'function') return;
-    if (!Buffer.isBuffer(bytes) && !(bytes instanceof ArrayBuffer) && !ArrayBuffer.isView(bytes)) return ack({ ok: false, error: 'Fichier illisible.' });
-    const built = buildSections(parseCsv(decodeCsvBytes(bytes)), { imageExists });
-    if (!built.ok) return ack(built);
-    const res = game.host('import', { sections: built.sections });
-    if (res.error) return ack({ ok: false, error: res.error });
-    ack({ ok: true, count: built.sections.length });
-    broadcast();
-  });
   socket.on('host:undo', () => {
     if (!isHost || !game.undo()) return;
     broadcast();

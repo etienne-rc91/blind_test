@@ -6,3 +6,5 @@ scores.json.*
 images/*
 !images/.gitkeep
 .superpowers/
+parties/*
+!parties/.gitkeep
