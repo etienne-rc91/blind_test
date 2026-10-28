@@ -647,7 +647,7 @@ function render() {
     who.textContent = first.name;
     const n = state.buzzes.length;
     sub.textContent = n > 1 ? `${state.buzzes[1].name} à ${state.buzzes[1].deltaMs} ms derrière` : `Morceau ${state.round}`;
-    const sig = state.round + ':' + first.teamId + ':' + state.excluded.length;
+    const sig = state.round + ':' + first.teamId + ':' + state.buzzKey;
     if (sig !== lastFirst) { lastFirst = sig; beep(); void f.offsetWidth; f.classList.add('flash'); }
   } else if (state.phase === 'open') {
     who.textContent = 'Buzzers ouverts';

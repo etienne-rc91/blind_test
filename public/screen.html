@@ -238,7 +238,7 @@ function renderPlay() {
   if (state.phase === 'buzzed' && first) {
     who.textContent = first.name;
     sub.textContent = songSub() ?? `Morceau ${state.round}`;
-    const sig = `${state.round}:${first.teamId}:${state.excluded.length}`;
+    const sig = `${state.round}:${first.teamId}:${state.buzzKey}`;
     if (sig !== lastBuzz) { lastBuzz = sig; void b.offsetWidth; b.classList.add('flash'); }
   } else if (state.phase === 'open') {
     who.textContent = 'Buzzez !';
