@@ -12,3 +12,5 @@ parties/*
 musiques/*
 !musiques/.gitkeep
 spotify.json
+videos/*
+!videos/.gitkeep

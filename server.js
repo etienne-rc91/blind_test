@@ -10,7 +10,8 @@ const QRCode = require('qrcode');
 const { Server } = require('socket.io');
 const { createGame } = require('./lib/game');
 const { isSafeImageName } = require('./lib/game-file');
-const { MUSIC_TYPES, isSafeMusicName } = require('./lib/songs');
+const { MUSIC_TYPES, VIDEO_TYPES, isSafeMusicName, isSafeVideoName } = require('./lib/songs');
+const { saveStream } = require('./lib/upload');
 const { createPartiesStore, cleanPartieName } = require('./lib/parties');
 const { checkLiveEdit } = require('./lib/live-edit');
 const { createSpotify, UNREACHABLE } = require('./lib/spotify');
@@ -21,10 +22,12 @@ const SCORES_FILE = process.env.SCORES_FILE || path.join(__dirname, 'scores.json
 const IMAGES_DIR = process.env.IMAGES_DIR || path.join(__dirname, 'images');
 const PARTIES_DIR = process.env.PARTIES_DIR || path.join(__dirname, 'parties');
 const MUSIQUES_DIR = process.env.MUSIQUES_DIR || path.join(__dirname, 'musiques');
+const VIDEOS_DIR = process.env.VIDEOS_DIR || path.join(__dirname, 'videos');
 const SPOTIFY_FILE = process.env.SPOTIFY_FILE || path.join(__dirname, 'spotify.json');
 const IMAGE_TYPES = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
 const MAX_IMAGE = 10 * 1024 * 1024;
 const MAX_MUSIC = 50 * 1024 * 1024;
+const MAX_VIDEO = 500 * 1024 * 1024;
 
 const app = express();
 const server = http.createServer(app);
@@ -99,6 +102,7 @@ app.get('/qr.svg', async (req, res) => {
 });
 app.use('/images', express.static(IMAGES_DIR, { dotfiles: 'deny', index: false }));
 app.use('/musiques', express.static(MUSIQUES_DIR, { dotfiles: 'deny', index: false }));
+app.use('/videos', express.static(VIDEOS_DIR, { dotfiles: 'deny', index: false }));
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 // ---------- Jeu ----------
@@ -161,7 +165,8 @@ function loadScores() {
 // ---------- Parties (API HTTP, réservée à l'animateur) ----------
 fs.mkdirSync(IMAGES_DIR, { recursive: true });
 fs.mkdirSync(MUSIQUES_DIR, { recursive: true });
-const parties = createPartiesStore({ dir: PARTIES_DIR, musicExists: (name) => isSafeMusicName(name) && fs.existsSync(path.join(MUSIQUES_DIR, name)), imageExists: (name) => isSafeImageName(name) && fs.existsSync(path.join(IMAGES_DIR, name)) });
+fs.mkdirSync(VIDEOS_DIR, { recursive: true });
+const parties = createPartiesStore({ dir: PARTIES_DIR, musicExists: (name) => isSafeMusicName(name) && fs.existsSync(path.join(MUSIQUES_DIR, name)), videoExists: (name) => isSafeVideoName(name) && fs.existsSync(path.join(VIDEOS_DIR, name)), imageExists: (name) => isSafeImageName(name) && fs.existsSync(path.join(IMAGES_DIR, name)) });
 const sameName = (a, b) => a != null && b != null && a.normalize('NFC').toLowerCase() === b.normalize('NFC').toLowerCase();
 const fail = (res, r) => res.status(r.status || 400).json({ error: r.error });
 
@@ -277,6 +282,24 @@ api.post('/images', rawBody(MAX_IMAGE), (req, res) => saveUpload(req, res, {
 api.post('/musiques', rawBody(MAX_MUSIC), (req, res) => saveUpload(req, res, {
   dir: MUSIQUES_DIR, types: MUSIC_TYPES, badType: 'Format audio non accepté (mp3, m4a, aac, ogg, wav ou flac).', empty: 'Morceau vide.',
 }));
+// Vidéo : écrite en flux sur le disque (jusqu’à 500 Mo), jamais entièrement en mémoire.
+const VIDEO_MESSAGES = {
+  'bad-type': [400, 'Format vidéo non accepté (mp4, webm, m4v ou mov).'],
+  empty: [400, 'Vidéo vide.'],
+  'too-big': [413, 'Fichier trop gros (500 Mo maximum pour une vidéo).'],
+  aborted: [400, 'Requête invalide.'],
+};
+api.post('/videos', async (req, res) => {
+  if (Number(req.headers['content-length']) > MAX_VIDEO) {
+    req.resume();
+    return res.status(413).json({ error: VIDEO_MESSAGES['too-big'][1] });
+  }
+  const r = await saveStream(req, { dir: VIDEOS_DIR, filename: req.query.filename, types: VIDEO_TYPES, max: MAX_VIDEO });
+  if (r.ok) return res.json(r);
+  req.resume();
+  const [status, error] = VIDEO_MESSAGES[r.reason];
+  return res.status(status).json({ error });
+});
 
 // Spotify : la recherche passe par le serveur ; la page ne reçoit que des jetons d’accès courts.
 const SPOTIFY_TRACK_ID = /^[0-9A-Za-z]{22}$/;

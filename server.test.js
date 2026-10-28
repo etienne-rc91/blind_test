@@ -9,7 +9,7 @@ const net = require('net');
 
 const KEY = 'test-key';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'buzzer-api-'));
-const DIRS = { parties: path.join(tmp, 'parties'), images: path.join(tmp, 'images'), musiques: path.join(tmp, 'musiques') };
+const DIRS = { parties: path.join(tmp, 'parties'), images: path.join(tmp, 'images'), musiques: path.join(tmp, 'musiques'), videos: path.join(tmp, 'videos') };
 fs.mkdirSync(DIRS.images);
 let base, child;
 
@@ -21,7 +21,7 @@ test.before(async () => {
   const port = await freePort();
   base = `http://localhost:${port}`;
   child = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
-    env: { ...process.env, PORT: String(port), HOST_KEY: KEY, SCORES_FILE: path.join(tmp, 'scores.json'), IMAGES_DIR: DIRS.images, MUSIQUES_DIR: DIRS.musiques, PARTIES_DIR: DIRS.parties, SPOTIFY_FILE: path.join(tmp, 'spotify.json'), SPOTIFY_CLIENT_ID: '' },
+    env: { ...process.env, PORT: String(port), HOST_KEY: KEY, SCORES_FILE: path.join(tmp, 'scores.json'), IMAGES_DIR: DIRS.images, MUSIQUES_DIR: DIRS.musiques, VIDEOS_DIR: DIRS.videos, PARTIES_DIR: DIRS.parties, SPOTIFY_FILE: path.join(tmp, 'spotify.json'), SPOTIFY_CLIENT_ID: '' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   await new Promise((resolve, reject) => {
@@ -129,6 +129,23 @@ test('image upload sanitizes and dedupes names', async () => {
   r = await json(await api('POST', '/api/images?filename=virus.exe', Buffer.from('x'), { raw: true }));
   assert.equal(r.status, 400);
   assert.equal(fs.readdirSync(tmp).filter((f) => f.endsWith('.png')).length, 0);
+});
+
+test('video upload and static serving', async () => {
+  let r = await json(await api('POST', '/api/videos?filename=a.mp4', Buffer.from('un'), { raw: true }));
+  assert.deepEqual(r.body, { ok: true, name: 'a.mp4' });
+  const got = await fetch(`${base}/videos/a.mp4`);
+  assert.equal(got.status, 200);
+  assert.equal(await got.text(), 'un');
+  r = await json(await api('POST', '/api/videos?filename=a.txt', Buffer.from('x'), { raw: true }));
+  assert.equal(r.status, 400);
+  assert.equal(r.body.error, 'Format vidéo non accepté (mp4, webm, m4v ou mov).');
+  r = await json(await api('POST', '/api/videos?filename=b.mp4', Buffer.alloc(0), { raw: true }));
+  assert.equal(r.status, 400);
+  assert.equal(r.body.error, 'Vidéo vide.');
+  r = await api('POST', '/api/videos?filename=a.mp4', Buffer.from('un'), { raw: true, key: null });
+  assert.equal(r.status, 403);
+  assert.deepEqual(fs.readdirSync(DIRS.videos), ['a.mp4']);
 });
 
 test('import stores an uploaded csv', async () => {
