@@ -3,6 +3,9 @@
 //   load(song), seek(sec), play(), pause(), position(), duration(), playing() (promesses) et onError(fn(message)).
 //   playing() n’est vrai que lorsque la lecture avance réellement.
 // Fichier audio : opts inutiles. Vidéo : opts = { container } ; l’élément <video> y est ajouté (sans contrôles, à 100 %).
+// YouTube : opts = { container } ; le lecteur YouTube (iframe, sans contrôles) y est ajouté dans son propre cadre ;
+// check(ref) vérifie à l’avance qu’une vidéo peut être lue ici (message d’erreur ou null).
+// Vidéo et YouTube ajoutent chacun leur propre élément au conteneur : la page n’affiche que celui du passage en cours.
 // Spotify : opts = { getToken, name } ; une seule instance par page ; prepare() démarre l’appareil à l’avance,
 // activate() est à appeler dans un geste de l’animateur.
 // Le lecteur ne décide de rien : la page appelle play / pause selon l’état reçu du serveur.
@@ -347,9 +350,189 @@
     return spotifyPlayer;
   }
 
+  // ---------- YouTube : l’API IFrame de YouTube ----------
+  // Rien n’est chargé depuis YouTube tant qu’aucun lecteur YouTube n’est demandé : une partie sans YouTube reste hors ligne.
+  // YouTube affiche son titre et ses suggestions dès que la vidéo est en pause ou en attente : la page la couvre alors.
+  const YT_API_URL = 'https://www.youtube.com/iframe_api';
+  const YT_UNREACHABLE = 'YouTube injoignable : vérifiez la connexion internet.';
+  const YT_ERRORS = {
+    2: 'Lien YouTube invalide.',
+    5: 'Lecture impossible dans ce navigateur.',
+    100: 'Vidéo introuvable ou privée.',
+    101: 'Le propriétaire de cette vidéo interdit sa lecture ailleurs que sur YouTube.',
+    150: 'Le propriétaire de cette vidéo interdit sa lecture ailleurs que sur YouTube.',
+  };
+  const YT_STATE = { ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 };
+  const AUTOPLAY_WAIT = 1500;   // ms : sans geste dans la page, une vidéo qui ne démarre pas est bloquée par le navigateur
+
+  let ytApiPromise = null;
+  function loadYoutubeApi() {
+    if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
+    if (ytApiPromise) return ytApiPromise;
+    let script = null;
+    ytApiPromise = withTimeout(new Promise((resolve, reject) => {
+      // L’API appelle cette fonction une fois chargée : elle doit exister avant l’injection du script.
+      window.onYouTubeIframeAPIReady = () => resolve(window.YT);
+      script = document.createElement('script');
+      script.src = YT_API_URL;
+      script.async = true;
+      script.onerror = () => reject(new Error(YT_UNREACHABLE));
+      document.head.append(script);
+    }), READY_TIMEOUT, YT_UNREACHABLE)
+      .catch((e) => {
+        if (window.YT && window.YT.Player) return window.YT;   // arrivée juste à la limite
+        if (script) script.remove();
+        ytApiPromise = null;                                    // panne réseau : le prochain essai réinjecte le script
+        throw e;
+      });
+    return ytApiPromise;
+  }
+
+  function createYoutubePlayer(opts = {}) {
+    if (!opts.container) throw new Error('Le lecteur YouTube a besoin d’un conteneur.');
+    const frame = document.createElement('div');   // cadre propre à ce lecteur : l’iframe de YouTube y est créée
+    frame.style.width = '100%';
+    frame.style.height = '100%';
+    frame.style.pointerEvents = 'none';            // aucun clic ne parvient à l’interface de YouTube
+    opts.container.append(frame);
+    let errorFn = () => {};
+    let yt = null;              // YT.Player prêt
+    let readyPromise = null;
+    let attempt = 0;            // un lecteur abandonné (délai dépassé) ne doit plus rien changer
+    let ref = null;             // vidéo chargée (identifiant YouTube)
+    let failed = null;          // message d’erreur de la vidéo `ref` : le prochain load() la recharge
+    let started = false;        // la vidéo `ref` a joué depuis son chargement (sinon seekTo la lancerait)
+    let at = 0;                 // position voulue tant que la vidéo n’a pas joué
+    let watchers = [];          // attentes d’un état ou d’une erreur
+
+    function notify(stateCode, error) {
+      const list = watchers; watchers = [];
+      for (const w of list) if (!w(stateCode, error)) watchers.push(w);
+    }
+    // Attend l’état `wanted` (ou une erreur) au plus `ms` : true si atteint, false sinon ; rejette sur erreur.
+    function waitState(wanted, ms) {
+      if (yt && yt.getPlayerState() === wanted) return Promise.resolve(true);
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => { watchers = watchers.filter((w) => w !== watch); resolve(false); }, ms);
+        const watch = (code, error) => {
+          if (error) { clearTimeout(timer); reject(new Error(error)); return true; }
+          if (code === wanted) { clearTimeout(timer); resolve(true); return true; }
+          return false;
+        };
+        watchers.push(watch);
+      });
+    }
+
+    function whenReady() {
+      if (yt) return Promise.resolve(yt);
+      if (readyPromise) return readyPromise;
+      const gen = ++attempt;
+      readyPromise = loadYoutubeApi().then((YT) => withTimeout(new Promise((resolve) => {
+        const holder = document.createElement('div');   // remplacé par l’iframe
+        frame.replaceChildren(holder);
+        const p = new YT.Player(holder, {
+          width: '100%',
+          height: '100%',
+          playerVars: { controls: 0, disablekb: 1, rel: 0, iv_load_policy: 3, fs: 0, playsinline: 1 },
+          events: {
+            onReady: () => { if (gen === attempt) { yt = p; resolve(p); } },
+            onStateChange: (e) => {
+              if (gen !== attempt) return;
+              if (e.data === YT_STATE.PLAYING) started = true;
+              if (e.data === YT_STATE.ENDED) { at = p.getCurrentTime() || at; started = false; }   // seekTo relancerait la vidéo
+              notify(e.data, null);
+            },
+            onError: (e) => {
+              if (gen !== attempt) return;
+              const msg = YT_ERRORS[e.data] || `Erreur YouTube (code ${e.data}).`;
+              failed = msg; started = false;
+              notify(null, msg);
+              errorFn(msg);
+            },
+          },
+        });
+      }), READY_TIMEOUT, YT_UNREACHABLE)).catch((e) => {
+        if (gen === attempt) { attempt += 1; frame.replaceChildren(); readyPromise = null; }   // le prochain essai recommence
+        throw e;
+      });
+      return readyPromise;
+    }
+
+    // Charge `id` sans le lancer, prêt à partir de `sec`.
+    function cue(id, sec) {
+      ref = id; failed = null; started = false; at = sec;
+      yt.cueVideoById({ videoId: id, startSeconds: sec });
+    }
+
+    const player = {
+      async load(song) {
+        await whenReady();
+        if (song.ref !== ref || failed) cue(song.ref, Number.isFinite(song.start) ? song.start : 0);
+      },
+      async seek(sec) {
+        await whenReady();
+        if (!ref) return;
+        // Pas encore lancée (ou finie) : seekTo lancerait la lecture ; on recharge à la position voulue.
+        if (!started) cue(ref, sec);
+        else yt.seekTo(sec, true);
+      },
+      async play() {
+        await whenReady();
+        if (!ref) return;
+        if (failed) throw new Error(failed);
+        if (yt.isMuted()) yt.unMute();   // coupé par YouTube après un démarrage bloqué : le son est toujours voulu
+        yt.playVideo();
+        // L’iframe ne dit pas si le navigateur bloque la lecture faute de geste : on le déduit quand la page n’en a reçu aucun.
+        const ua = navigator.userActivation;
+        if (!ua || ua.hasBeenActive !== false) return;
+        const ok = await waitState(YT_STATE.PLAYING, AUTOPLAY_WAIT);
+        if (ok && !yt.isMuted()) return;
+        yt.pauseVideo();
+        const err = new Error('cliquez dans la page ou appuyez sur une touche pour activer le son');
+        err.notAllowed = true;
+        throw err;
+      },
+      pause() {
+        if (yt && ref) yt.pauseVideo();
+        return Promise.resolve();
+      },
+      position() {
+        if (!yt || !started) return Promise.resolve(at);
+        return Promise.resolve(yt.getCurrentTime() || 0);
+      },
+      duration() {
+        const d = yt && ref ? yt.getDuration() : 0;
+        return Promise.resolve(d > 0 ? d : null);
+      },
+      playing() {
+        return Promise.resolve(!!yt && !!ref && yt.getPlayerState() === YT_STATE.PLAYING);
+      },
+      onError(fn) {
+        errorFn = typeof fn === 'function' ? fn : () => {};
+      },
+      // Vérifie qu’une vidéo se lit ici : chargée muette, lancée jusqu’à la lecture ou une erreur, puis mise en pause.
+      async check(id) {
+        try {
+          await whenReady();
+          cue(id, 0);
+          yt.mute();
+          yt.playVideo();
+          const ok = await waitState(YT_STATE.PLAYING, READY_TIMEOUT);
+          return ok ? null : YT_UNREACHABLE;
+        } catch (e) {
+          return e.message || YT_UNREACHABLE;
+        } finally {
+          if (yt) { yt.pauseVideo(); yt.unMute(); }
+        }
+      },
+    };
+    return player;
+  }
+
   function create(source, opts) {
     if (source === 'file') return createFilePlayer(opts);
     if (source === 'video') return createVideoPlayer(opts);
+    if (source === 'youtube') return createYoutubePlayer(opts);
     if (source === 'spotify') return createSpotifyPlayer(opts);
     throw new Error('Source inconnue : ' + source);
   }

@@ -147,10 +147,11 @@
               <ol class="items" id="songs" style="margin-top:6px"></ol>
               <!-- Ajout d’un morceau, déplacé dans l’éditeur de question pour l’extrait d’une question QCM -->
               <div id="clipAdd">
-              <div class="row" style="margin-top:6px; flex-wrap:nowrap">
+              <div class="row" style="margin-top:6px">
                 <button class="ghost" id="addFile">+ Fichier</button>
                 <button class="ghost" id="addVideo">+ Vidéo</button>
                 <button class="ghost" id="addSpotify" aria-expanded="false" aria-controls="spotifyPanel">+ Spotify</button>
+                <button class="ghost" id="addYoutube" aria-expanded="false" aria-controls="youtubePanel">+ YouTube</button>
               </div>
               <input type="file" id="songFile" multiple hidden>
               <input type="file" id="videoFile" multiple hidden>
@@ -165,6 +166,13 @@
                 <input type="text" id="spQuery" maxlength="200" placeholder="Rechercher : artiste, titre…" aria-label="Rechercher un titre sur Spotify" autocomplete="off" hidden>
                 <ol class="results" id="spResults" aria-label="Résultats Spotify"></ol>
                 <p class="err" id="spErr"></p>
+              </div>
+              <div class="sp" id="youtubePanel" hidden>
+                <div class="row" style="flex-wrap:nowrap">
+                  <input type="text" id="ytLink" maxlength="300" placeholder="Lien de la vidéo YouTube" aria-label="Lien de la vidéo YouTube" autocomplete="off" spellcheck="false">
+                  <button id="ytAdd">Ajouter</button>
+                </div>
+                <p class="err" id="ytErr"></p>
               </div>
               </div>
             </div>
@@ -715,10 +723,22 @@ let playing = false, listening = false;            // listening : « Écouter le
 let pos = 0, dur = null;                           // dernière position et durée lues (secondes)
 const playError = (msg) => `Lecture impossible : ${String(msg || 'erreur inconnue').replace(/\.+$/, '')}.`;
 
+const isVideo = (source) => source === 'video' || source === 'youtube';
+const videoBoxes = {};                             // un cadre par lecteur vidéo dans l’aperçu : seul celui du passage affiché est visible
+function showVideoBox(source) {
+  for (const [src, box] of Object.entries(videoBoxes)) box.hidden = src !== source;
+}
 function getPlayer(source) {
   if (!players[source]) {
-    const opts = source === 'spotify' ? { getToken: spotifyToken, name: 'Blind test — Création' }
-      : (source === 'video' || source === 'youtube') ? { container: $('sVideo') } : undefined;
+    let opts;
+    if (source === 'spotify') opts = { getToken: spotifyToken, name: 'Blind test — Création' };
+    else if (isVideo(source)) {
+      const box = el('div');
+      box.style.cssText = 'width:100%; height:100%';
+      $('sVideo').append(box);
+      videoBoxes[source] = box;
+      opts = { container: box };
+    }
     const p = Players.create(source, opts);
     p.onError((msg) => {
       if (!loaded || loaded.source !== source) return;   // erreur d'un lecteur qui ne joue pas le morceau affiché
@@ -742,6 +762,7 @@ function syncPlayer(m) {
   pos = start;
   let p;
   try { p = player = getPlayer(m.source); } catch (e) { player = null; $('sErr').textContent = playError(e.message); return; }
+  showVideoBox(m.source);
   if (m.source === 'spotify') spotifyDuration(m);
   p.load(m)
     .then(() => { if (loaded === m) return p.seek(start); })   // changé de morceau pendant le chargement : rien à faire
@@ -760,7 +781,7 @@ function renderSong(m) {
   $('sLabel').textContent = qcm ? '' : `Morceau ${selSong + 1}`;
   $('delSong').textContent = qcm ? 'Retirer l’extrait' : 'Supprimer le morceau';
   $('sAnswerField').hidden = qcm;
-  $('sVideo').hidden = m.source !== 'video' && m.source !== 'youtube';
+  $('sVideo').hidden = !isVideo(m.source);
   $('sRef').textContent = `${sourceIcon(m.source)} ${m.ref || 'aucune musique'}`;
   if (!qcm && document.activeElement !== $('sAnswer')) $('sAnswer').value = m.answer || '';
   $('sAnswer').classList.toggle('missing', !qcm && !(m.answer || '').trim());
@@ -976,6 +997,40 @@ function addSpotifySong(t) {
   if (target.type === 'buzzer') clip.answer = `${t.artists} — ${t.name}`.slice(0, 120);
   setClip(clip, target);
 }
+
+// ----- YouTube : lien collé, titre demandé au serveur, lecture vérifiée dans l’aperçu avant d’ajouter -----
+$('addYoutube').onclick = () => {
+  const panel = $('youtubePanel');
+  panel.hidden = !panel.hidden;
+  $('addYoutube').setAttribute('aria-expanded', String(!panel.hidden));
+  if (!panel.hidden) $('ytLink').focus();
+};
+$('ytLink').onkeydown = (e) => { if (e.key === 'Enter') $('ytAdd').click(); };
+$('ytAdd').onclick = async () => {
+  const target = clipTarget();
+  if (target.type !== 'buzzer' && !(target.type === 'qcm' && target.q)) return;
+  if (!confirmReplace()) return;
+  const btn = $('ytAdd');
+  btn.disabled = true; $('ytErr').textContent = '';
+  try {
+    const info = await api('GET', `/youtube/info?link=${enc($('ytLink').value.trim())}`);
+    // La vérification occupe le lecteur YouTube de l’aperçu : le passage affiché sera rechargé ensuite.
+    stopPlayback(); loaded = null;
+    const p = getPlayer('youtube');
+    const problem = await p.check(info.id);
+    if (problem) throw new Error(problem);
+    const d = await p.duration();
+    const clip = { source: 'youtube', ref: info.id, start: 0, end: defaultEnd(d) };
+    if (target.type === 'buzzer') clip.answer = (info.title || '').trim().slice(0, 120);
+    $('ytLink').value = '';
+    setClip(clip, target);
+  } catch (e) {
+    $('ytErr').textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    render();                                      // recharge le passage affiché (ou le nouveau morceau) dans l’aperçu
+  }
+};
 
 // ----- Chargement -----
 async function load() {
