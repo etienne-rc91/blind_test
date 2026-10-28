@@ -83,6 +83,8 @@ function say(text, kind = 'ok') { $('msg').className = kind; $('msg').textConten
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const btn = (label, cls, fn) => { const b = el('button', cls, label); b.onclick = fn; return b; };
 const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
+const sectionLabel = (s) => (s.type === 'qcm' ? `${s.name} (QCM · ${s.questionCount})`
+  : s.songCount ? `${s.name} (${s.songCount} morceau${s.songCount > 1 ? 'x' : ''})` : s.name);
 
 let data = null;
 async function load() {
@@ -108,7 +110,7 @@ function render() {
     info.append(title);
     const date = new Date(p.mtime).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
     const summary = p.error ? p.error
-      : p.sections.length ? `${plural(p.sections.length, 'manche')} · ${p.sections.map((s) => (s.type === 'qcm' ? `${s.name} (QCM · ${s.questionCount})` : s.name)).join(', ')}`
+      : p.sections.length ? `${plural(p.sections.length, 'manche')} · ${p.sections.map(sectionLabel).join(', ')}`
       : 'Aucune manche';
     info.append(el('div', 'meta', `${summary} · modifiée le ${date}`));
     if (p.problems.length) {
