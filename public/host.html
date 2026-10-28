@@ -83,6 +83,8 @@
   .bar { height: 12px; border-radius: 6px; background: var(--track); overflow: hidden; flex: none; }
   #songBar { height: 100%; width: 0; background: var(--accent); border-radius: 6px; }
   #songError { margin: 0; color: var(--red); font-weight: 700; }
+  #spotifyLine { margin: 0; }
+  #spotifyLine .on { color: var(--green); font-weight: 700; }
   #songError:empty { display: none; }
   .songActions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
   .songActions button, #soundHere { font: inherit; font-size: 1rem; font-weight: 700; padding: 8px 12px; border-radius: 10px; border: 2px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
@@ -151,6 +153,7 @@
     <div id="songPanel" hidden>
       <div class="songMain">
         <div class="songHead"><span id="songMeta"></span><button id="soundHere" hidden title="Jouer la musique sur ce PC plutôt que sur l’autre Régie">Le son sort ici</button></div>
+        <p id="spotifyLine" class="hint" hidden></p>
         <div id="songAnswer"></div>
         <p class="hint secret">Réponse visible uniquement ici</p>
         <div id="songStatus"><span id="songState"></span><span id="songTime"></span></div>
@@ -260,6 +263,8 @@ function fanfare() {
   }
 }
 addEventListener('pointerdown', unlockAudio); addEventListener('keydown', unlockAudio);
+// Le lecteur Spotify a aussi besoin d’un geste de l’animateur pour avoir le droit de jouer du son.
+for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, () => { if (players.spotify) players.spotify.activate(); });
 
 // ----- Actions -----
 const act = (ev, payload) => socket.emit(ev, payload);
@@ -337,12 +342,12 @@ function showJoin(ip) {
 
 socket.on('state', (s) => {
   if (s.qcm?.step === 'countdown') qDeadline = Date.now() + s.qcm.remainingMs;
-  state = s; checkFanfare(); render(); scheduleSync();
+  state = s; checkFanfare(); muteNow(); render(); scheduleSync(); checkSpotify();
 });
 // Une seule Régie joue le son : le serveur dit laquelle.
-socket.on('sound', ({ mine } = {}) => { soundMine = mine === true; if (state) { render(); scheduleSync(); } });
+socket.on('sound', ({ mine } = {}) => { soundMine = mine === true; if (state) { muteNow(); render(); scheduleSync(); warmSpotify(); } });
 // Déconnectée, cette Régie n’est peut-être plus celle qui joue : on coupe plutôt que risquer deux sons.
-socket.on('disconnect', () => { soundMine = false; if (state) scheduleSync(); });
+socket.on('disconnect', () => { soundMine = false; if (state) { muteNow(); scheduleSync(); } });
 
 // ----- Morceaux : appliquer l’état du serveur au lecteur -----
 // Le serveur décide (audible ou non) ; la Régie obéit et ne remonte que la fin du passage (host:ended).
@@ -357,6 +362,8 @@ let pos = null, posKey = null;   // dernière position lue, et le passage auquel
 let pollTimer = null;
 let prevSong = null, fanfareKey = null;
 let syncing = Promise.resolve();
+let playPending = false;     // un play() est en cours (un lancement Spotify peut prendre une seconde)
+let muteGen = 0;             // incrémenté à chaque coupure immédiate : un play() en cours ne vaut plus lecture
 
 const curSong = () => (state?.song && state.song.index !== null ? state.song.songs[state.song.index] : null);
 const songKey = () => `${state.currentSection}:${state.song?.index}:${state.song?.seq}`;
@@ -364,7 +371,8 @@ const fmtTime = (sec) => { const t = Math.max(0, Math.floor(sec)); return `${Mat
 
 function getPlayer(source) {
   if (!players[source]) {
-    const p = Players.create(source);   // lève une erreur si la source n’est pas disponible
+    const opts = source === 'spotify' ? { getToken: spotifyToken, name: 'Blind test — Régie' } : undefined;
+    const p = Players.create(source, opts);   // lève une erreur si la source n’est pas disponible
     p.onError((msg) => showSongError(msg));
     players[source] = p;
   }
@@ -390,7 +398,12 @@ async function syncSound() {
   if (!player || songKey() !== key) return;   // l’état a changé pendant le chargement : la mise à jour suivante s’en charge
   if (state.song.audible && soundMine && endedKey !== key) {
     if (!playingNow) {
-      try { await player.play(); playingNow = true; songError = ''; } catch (e) { showSongError(e.message); }
+      const gen = muteGen;
+      playPending = true;
+      try {
+        await player.play();
+        if (gen === muteGen) { playingNow = true; songError = ''; }   // coupé pendant le lancement : la mise à jour suivante décide
+      } catch (e) { showSongError(e.message); } finally { playPending = false; }
     }
   } else if (playingNow) {
     await player.pause(); playingNow = false;
@@ -400,6 +413,17 @@ async function syncSound() {
 }
 function stopAll() {
   for (const p of Object.values(players)) p.pause();
+  playingNow = false;
+  updatePoll();
+}
+// La pause (buzz, F, B, autre Régie…) n’attend pas la file des mises à jour : un lancement Spotify en cours
+// peut y prendre plusieurs secondes. La file réconcilie ensuite avec l’état le plus récent.
+function muteNow() {
+  const cur = curSong();
+  const audible = soundMine && cur && state.song.audible && songKey() === loadedKey && endedKey !== loadedKey;
+  if (audible || (!playingNow && !playPending)) return;
+  muteGen += 1;
+  for (const p of Object.values(players)) p.pause().catch(() => {});
   playingNow = false;
   updatePoll();
 }
@@ -419,7 +443,9 @@ async function tick() {
   if (!player || !playingNow || !cur) return;
   const key = loadedKey;
   if (songKey() !== key) return;
-  const p = await player.position(), d = await player.duration();
+  let p, d;
+  try { p = await player.position(); d = await player.duration(); } catch (e) { showSongError(e.message || String(e)); return; }
+  if (songKey() !== key) return;
   pos = p; posKey = key;
   renderSongProgress();
   const fileEnd = d !== null && p >= d - 0.25;
@@ -442,6 +468,58 @@ function checkFanfare() {
 }
 // Lecture refusée faute de geste (Régie rechargée en pleine lecture) : le prochain clic ou la prochaine touche relance.
 for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, () => { if (state?.song?.audible && !playingNow) scheduleSync(); });
+
+// ----- Spotify : témoin et appareil, seulement si la manche en cours a des morceaux Spotify -----
+// Une partie sans Spotify ne fait aucune requête vers Spotify (ni SDK, ni Web API).
+let spotifyStatus = null;    // { configured, connected } lu sur le serveur
+let spotifyFor = null;       // manche pour laquelle l’état a été lu
+const sectionHasSpotify = () => (state?.sections[state.currentSection]?.spotifyCount || 0) > 0;
+async function spotifyToken() {
+  let res;
+  try { res = await fetch('/api/spotify/token', { headers: { 'x-host-key': key }, cache: 'no-store' }); }
+  catch { throw new Error('Serveur injoignable.'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.accessToken) throw new Error(data.error || `Erreur ${res.status}`);
+  return data.accessToken;
+}
+// Spotify revient toujours sur 127.0.0.1 : on y part directement pour rester sur la même adresse.
+function spotifyLoginUrl() {
+  const path = `/spotify/login?key=${encodeURIComponent(key)}&back=host`;
+  return location.hostname === 'localhost' ? `${location.protocol}//127.0.0.1${location.port ? ':' + location.port : ''}${path}` : path;
+}
+function checkSpotify() {
+  if (!sectionHasSpotify()) { spotifyFor = null; return; }
+  const k = `${state.partieName}:${state.currentSection}`;
+  if (spotifyFor === k) return;
+  spotifyFor = k;
+  refreshSpotify();
+}
+async function refreshSpotify() {
+  try {
+    const res = await fetch('/api/spotify/status', { headers: { 'x-host-key': key }, cache: 'no-store' });
+    spotifyStatus = res.ok ? await res.json() : null;
+  } catch { spotifyStatus = null; }
+  renderSpotify(); warmSpotify();
+}
+// Démarre l’appareil Spotify avant le premier Espace : le lancement du morceau sera plus rapide.
+function warmSpotify() {
+  if (!soundMine || !sectionHasSpotify() || !spotifyStatus?.connected) return;
+  try { getPlayer('spotify').prepare().catch((e) => showSongError(e.message)); } catch (e) { showSongError(e.message); }
+}
+function renderSpotify() {
+  const line = $('spotifyLine');
+  line.hidden = !state || $('songPanel').hidden || !sectionHasSpotify();
+  if (line.hidden) return;
+  line.innerHTML = '';
+  if (spotifyStatus?.connected) {
+    const on = document.createElement('span'); on.className = 'on'; on.textContent = '● Spotify connecté';
+    line.append(on);
+  } else {
+    const a = document.createElement('a'); a.href = spotifyLoginUrl(); a.textContent = 'Se connecter';
+    line.append('○ Spotify non connecté — ', a);
+  }
+  if (location.hostname === 'localhost') line.append(' · Ouvrez la Régie sur 127.0.0.1 pour garder la connexion Spotify.');
+}
 
 // ----- Rendu -----
 function renderQcm(q) {
@@ -529,6 +607,7 @@ function renderSong() {
   if (curLi && (curLi.offsetTop < ol.scrollTop || curLi.offsetTop + curLi.offsetHeight > ol.scrollTop + ol.clientHeight)) {
     ol.scrollTop = curLi.offsetTop - ol.clientHeight / 2;
   }
+  renderSpotify();
   renderSongProgress();
 }
 // Avancement dans le passage : aussi en pause, pour montrer où la musique reprendra.

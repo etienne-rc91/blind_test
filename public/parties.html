@@ -28,6 +28,7 @@
   #msg:empty { display: none; }
   #msg.err { border-color: var(--red); color: var(--red); }
   #msg.ok { border-color: var(--green); color: var(--green); }
+  #msg.warn { border-color: var(--orange); color: var(--orange); }
   #list { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
   #list li { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 12px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
   #list li.current { border-color: var(--green); }
@@ -146,7 +147,10 @@ async function play(name) {
       r = await call('POST', `/parties/${q(name)}/play`, { confirm: true });
     }
     if (!r.ok) throw new Error(r.data.error || `Erreur ${r.status}`);
-    say(`« ${name} » est prête : nouvelle soirée lancée. Les équipes peuvent rejoindre.`);
+    const ready = `« ${name} » est prête : nouvelle soirée lancée. Les équipes peuvent rejoindre.`;
+    // Avertissements du serveur (Spotify non connecté…) : on prévient sans bloquer.
+    const warnings = Array.isArray(r.data.warnings) ? r.data.warnings : [];
+    say(warnings.length ? `${ready} Attention : ${warnings.join(' ')}` : ready, warnings.length ? 'warn' : 'ok');
     await load();
   } catch (e) { say(e.message, 'err'); }
 }

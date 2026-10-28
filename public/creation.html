@@ -98,6 +98,12 @@
   .field input { width: 100%; }
   .err { color: var(--red); font-size: .9rem; margin: 0; }
   .err:empty { display: none; }
+  /* Spotify : connexion et recherche */
+  .sp { margin-top: 10px; padding: 10px; border: 2px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .sp .on { color: var(--green); font-weight: 700; }
+  .sp input { width: 100%; }
+  .results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 40vh; overflow-y: auto; }
+  .results button { width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; font-weight: 400; }
   [hidden] { display: none !important; }
   @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } .wrap { height: auto; } .split { grid-template-columns: 1fr; } }
 </style>
@@ -139,10 +145,21 @@
               <ol class="items" id="songs" style="margin-top:6px"></ol>
               <div class="row" style="margin-top:6px; flex-wrap:nowrap">
                 <button class="ghost" id="addFile">+ Fichier</button>
-                <button class="ghost" id="addSpotify" hidden>+ Spotify</button>
+                <button class="ghost" id="addSpotify" aria-expanded="false" aria-controls="spotifyPanel">+ Spotify</button>
               </div>
               <input type="file" id="songFile" multiple hidden>
               <p class="err" id="addErr" style="margin-top:6px"></p>
+              <div class="sp" id="spotifyPanel" hidden>
+                <p class="hint" id="spStatus"></p>
+                <div class="row" id="spSetup" hidden style="flex-wrap:nowrap">
+                  <input type="text" id="spClientId" maxlength="64" placeholder="Client ID Spotify" aria-label="Client ID Spotify" autocomplete="off" spellcheck="false">
+                  <button id="spSaveId">Enregistrer</button>
+                </div>
+                <a class="btn" id="spLogin" target="_blank" hidden>Se connecter à Spotify</a>
+                <input type="text" id="spQuery" maxlength="200" placeholder="Rechercher : artiste, titre…" aria-label="Rechercher un titre sur Spotify" autocomplete="off" hidden>
+                <ol class="results" id="spResults" aria-label="Résultats Spotify"></ol>
+                <p class="err" id="spErr"></p>
+              </div>
             </div>
             <div id="songEditor" hidden>
               <div class="row"><div class="label" id="sLabel"></div><button class="danger icon" id="delSong" style="margin-left:auto">Supprimer le morceau</button></div>
@@ -610,18 +627,26 @@ $('delSong').onclick = () => {
 $('sAnswer').oninput = () => { sections[selSection].songs[selSong].answer = $('sAnswer').value; touch(); renderLight(); };
 
 // ----- Lecteur du morceau choisi -----
-// Un seul lecteur pour la page ; il ne joue que le morceau affiché et s'arrête dès qu'on en change.
-let player = null;
+// Un lecteur par source, créé au premier besoin (le lecteur Spotify seulement si un morceau Spotify est choisi) ;
+// il ne joue que le morceau affiché et s'arrête dès qu'on en change.
+const players = {};
+let player = null;                                 // lecteur du morceau chargé
 let loaded = null;                                 // morceau chargé dans le lecteur (objet de sections)
 let playing = false, listening = false;            // listening : « Écouter le passage », arrêt automatique à Fin
 let pos = 0, dur = null;                           // dernière position et durée lues (secondes)
+const playError = (msg) => `Lecture impossible : ${String(msg || 'erreur inconnue').replace(/\.+$/, '')}.`;
 
-function getPlayer() {
-  if (!player) {
-    player = Players.create('file');
-    player.onError((msg) => { playing = listening = false; $('sErr').textContent = `Lecture impossible : ${msg}.`; paintSong(); });
+function getPlayer(source) {
+  if (!players[source]) {
+    const opts = source === 'spotify' ? { getToken: spotifyToken, name: 'Blind test — Création' } : undefined;
+    const p = Players.create(source, opts);
+    p.onError((msg) => {
+      if (!loaded || loaded.source !== source) return;   // erreur d'un lecteur qui ne joue pas le morceau affiché
+      playing = listening = false; $('sErr').textContent = playError(msg); paintSong();
+    });
+    players[source] = p;
   }
-  return player;
+  return players[source];
 }
 function stopPlayback() {
   if (player && (playing || listening)) player.pause();
@@ -635,10 +660,16 @@ function syncPlayer(m) {
   if (!m) return;
   const start = Number.isInteger(m.start) ? m.start : 0;
   pos = start;
-  const p = getPlayer();
-  p.load(m).then(() => p.seek(start)).catch((e) => { $('sErr').textContent = `Lecture impossible : ${e.message}.`; });
+  let p;
+  try { p = player = getPlayer(m.source); } catch (e) { player = null; $('sErr').textContent = playError(e.message); return; }
+  if (m.source === 'spotify') spotifyDuration(m);
+  p.load(m)
+    .then(() => { if (loaded === m) return p.seek(start); })   // changé de morceau pendant le chargement : rien à faire
+    .catch((e) => { if (loaded === m) $('sErr').textContent = playError(e.message); });
 }
 addEventListener('pagehide', stopPlayback);
+// Le lecteur Spotify a besoin d'un geste (clic, touche) pour avoir le droit de jouer du son.
+for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, () => { if (players.spotify) players.spotify.activate(); });
 
 // Étendue de la barre : le morceau entier (en secondes entières) ; tant que la durée est inconnue, assez pour le passage.
 const span = (m) => (dur !== null ? Math.max(1, Math.floor(dur)) : Math.max(DEFAULT_PASSAGE, m.end || 0, (m.start || 0) + 1));
@@ -717,42 +748,148 @@ for (const [h, which] of [[$('hStart'), 'start'], [$('hEnd'), 'end']]) {
 // Clic sur la barre (hors poignées) : la lecture se place à cet endroit.
 $('timeline').addEventListener('pointerdown', (e) => {
   if (!loaded || e.target.classList.contains('handle')) return;
-  pos = timeAt(e.clientX, loaded);
-  getPlayer().seek(pos);
+  const m = loaded;
+  pos = timeAt(e.clientX, m);
+  if (player) player.seek(pos).catch((err) => { if (loaded === m) $('sErr').textContent = playError(err.message); });
   paintSong();
 });
 
 $('sPlay').onclick = async () => {
-  if (!loaded) return;
-  const p = getPlayer();
+  const m = loaded, p = player;
+  if (!m || !p) return;
   if (playing && !listening) { p.pause(); playing = false; paintSong(); return; }
   listening = false; playing = true; $('sErr').textContent = ''; paintSong();
-  try { await p.play(); } catch (e) { playing = false; $('sErr').textContent = `Lecture impossible : ${e.message}.`; paintSong(); }
+  try {
+    await p.play();
+  } catch (e) {
+    if (loaded !== m) return;                        // changé de morceau pendant le lancement : l'erreur ne le concerne plus
+    playing = false; $('sErr').textContent = playError(e.message); paintSong();
+  }
 };
 $('sListen').onclick = async () => {
-  const m = loaded;
-  if (!m) return;
-  const p = getPlayer();
+  const m = loaded, p = player;
+  if (!m || !p) return;
   if (listening) { p.pause(); playing = listening = false; paintSong(); return; }
   playing = listening = true; $('sErr').textContent = ''; pos = m.start; paintSong();
   try {
     await p.seek(m.start);
     if (loaded !== m || !listening) return;          // arrêté ou changé de morceau pendant le chargement
     await p.play();
-  } catch (e) { playing = listening = false; $('sErr').textContent = `Lecture impossible : ${e.message}.`; paintSong(); }
+  } catch (e) {
+    if (loaded !== m) return;
+    playing = listening = false; $('sErr').textContent = playError(e.message); paintSong();
+  }
 };
 
-// Toutes les 200 ms : position, durée (connue une fois le fichier chargé), arrêt à Fin pendant « Écouter le passage ».
+// Toutes les 200 ms : position, durée (connue une fois le morceau chargé), arrêt à Fin pendant « Écouter le passage ».
 setInterval(async () => {
-  const m = loaded;
-  if (!m || !player) return;
-  const p = await player.position(), d = await player.duration();
+  const m = loaded, pl = player;
+  if (!m || !pl) return;
+  let p, d;
+  try { p = await pl.position(); d = await pl.duration(); } catch (e) {
+    if (m === loaded && (playing || listening)) $('sErr').textContent = playError(e.message);
+    return;
+  }
   if (m !== loaded) return;
-  pos = p; dur = d;
-  if (listening && Number.isInteger(m.end) && p >= m.end) { player.pause(); playing = listening = false; }
-  if (playing && d !== null && p >= d - 0.05) playing = listening = false;   // fin réelle du fichier
+  pos = p;
+  if (d !== null) dur = d;                           // Spotify : durée donnée par le serveur tant que le titre n'est pas lancé
+  if (listening && Number.isInteger(m.end) && p >= m.end) { pl.pause(); playing = listening = false; }
+  if (playing && d !== null && p >= d - 0.05) playing = listening = false;   // fin réelle du morceau
   paintSong();
 }, 200);
+
+// ----- Spotify : connexion, recherche et ajout de titres -----
+// Rien n'est demandé à Spotify tant qu'on n'ouvre pas ce panneau ou qu'on ne choisit pas un morceau Spotify.
+let spStatus = null;                               // { configured, connected } lu sur le serveur
+let searchTimer = null, searchSeq = 0;
+const trackInfo = new Map();                       // id → { id, name, artists, durationSec, cover }
+async function spotifyToken() { return (await api('GET', '/spotify/token')).accessToken; }
+// Spotify revient toujours sur 127.0.0.1 : on y part directement pour rester sur la même adresse.
+function spotifyLoginUrl() {
+  const path = `/spotify/login?key=${enc(key)}&back=creation`;
+  return location.hostname === 'localhost' ? `${location.protocol}//127.0.0.1${location.port ? ':' + location.port : ''}${path}` : path;
+}
+async function spotifyDuration(m) {
+  try {
+    let t = trackInfo.get(m.ref);
+    if (!t) { t = await api('GET', `/spotify/tracks/${enc(m.ref)}`); trackInfo.set(m.ref, t); }
+    if (loaded === m && dur === null && t.durationSec > 0) { dur = t.durationSec; paintSong(); }
+  } catch (e) {
+    if (loaded === m) $('sErr').textContent = e.message;
+  }
+}
+async function refreshSpotify() {
+  try { spStatus = await api('GET', '/spotify/status'); $('spErr').textContent = ''; }
+  catch (e) { spStatus = null; $('spErr').textContent = e.message; }
+  renderSpotify();
+}
+function renderSpotify() {
+  const st = spStatus;
+  $('addSpotify').setAttribute('aria-expanded', String(!$('spotifyPanel').hidden));
+  $('spSetup').hidden = !st || st.configured;
+  $('spLogin').hidden = !st || !st.configured || st.connected;
+  $('spLogin').href = spotifyLoginUrl();
+  $('spQuery').hidden = !st || !st.connected;
+  $('spResults').hidden = !st || !st.connected;
+  const box = $('spStatus'); box.innerHTML = '';
+  if (!st) box.textContent = $('spErr').textContent ? '' : 'Vérification de Spotify…';
+  else if (!st.configured) box.textContent = 'Spotify n’est pas configuré : collez le Client ID de votre app (tableau de bord développeur Spotify).';
+  else if (!st.connected) box.textContent = 'Spotify n’est pas connecté. La connexion s’ouvre dans un nouvel onglet : revenez ensuite sur cette page.';
+  else box.append(el('span', 'on', '● Spotify connecté'));
+  if (st && location.hostname === 'localhost') box.append(el('span', null, ' Ouvrez cette page sur 127.0.0.1 pour garder la connexion Spotify.'));
+}
+$('addSpotify').onclick = () => {
+  const panel = $('spotifyPanel');
+  panel.hidden = !panel.hidden;
+  renderSpotify();
+  if (!panel.hidden) refreshSpotify().then(() => { if (!$('spQuery').hidden) $('spQuery').focus(); });
+};
+// Retour de l'onglet de connexion : l'état a peut-être changé.
+addEventListener('focus', () => { if (!$('spotifyPanel').hidden) refreshSpotify(); });
+$('spSaveId').onclick = async () => {
+  try { spStatus = await api('POST', '/spotify/client-id', { clientId: $('spClientId').value.trim() }); $('spErr').textContent = ''; }
+  catch (e) { $('spErr').textContent = e.message; }
+  renderSpotify();
+};
+$('spClientId').onkeydown = (e) => { if (e.key === 'Enter') $('spSaveId').click(); };
+$('spQuery').oninput = () => {
+  clearTimeout(searchTimer);
+  const q = $('spQuery').value.trim();
+  if (q.length < 2) { searchSeq += 1; $('spResults').innerHTML = ''; $('spErr').textContent = ''; return; }
+  searchTimer = setTimeout(() => runSearch(q), 300);
+};
+async function runSearch(q) {
+  const seq = ++searchSeq;
+  try {
+    const r = await api('GET', `/spotify/search?q=${enc(q)}`);
+    if (seq !== searchSeq) return;                 // une recherche plus récente est partie entre-temps
+    $('spErr').textContent = '';
+    renderResults(r.tracks || []);
+  } catch (e) {
+    if (seq !== searchSeq) return;
+    $('spErr').textContent = e.message;
+    if (e.status === 401) refreshSpotify();
+  }
+}
+function renderResults(tracks) {
+  const ol = $('spResults'); ol.innerHTML = '';
+  if (!tracks.length) { ol.append(el('li', 'hint', 'Aucun titre trouvé.')); return; }
+  for (const t of tracks) {
+    const li = el('li');
+    const b = el('button', null, `${t.artists} — ${t.name} (${fmt(t.durationSec)})`);
+    b.title = 'Ajouter ce titre à la manche';
+    b.onclick = () => addSpotifySong(t);
+    li.append(b); ol.append(li);
+  }
+}
+function addSpotifySong(t) {
+  const s = sections[selSection];
+  if (!s || s.type !== 'buzzer') return;
+  trackInfo.set(t.id, t);
+  const end = t.durationSec > 0 ? Math.max(1, Math.min(DEFAULT_PASSAGE, t.durationSec)) : DEFAULT_PASSAGE;
+  s.songs.push({ source: 'spotify', ref: t.id, start: 0, end, answer: `${t.artists} — ${t.name}`.slice(0, 120) });
+  selSong = s.songs.length - 1; touch(); render();
+}
 
 // ----- Chargement -----
 async function load() {
