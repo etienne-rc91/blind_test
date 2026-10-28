@@ -8,7 +8,7 @@ Les téléphones servent de buzzers et le PC arbitre. Aucune dépendance à inte
     npm start                 # port 3000, clé hôte aléatoire
     HOST_KEY=secret npm start # clé fixe (PowerShell : $env:HOST_KEY="secret"; npm start)
 
-La console affiche l'URL joueur, l'URL de la Régie (`/host?key=…`) et celle du Grand écran (`/screen`). Ouvrez la Régie et le Grand écran sur le PC ; les joueurs scannent le QR code affiché sur le Grand écran (étape Installation). La Régie rappelle l'adresse à taper dans le bloc « Rejoindre ».
+La console affiche l'URL joueur, l'URL de la Régie (`/host?key=…`) et celle du Grand écran (`/screen`) ; sur ce PC, elle les donne en `127.0.0.1` (l'adresse qu'accepte Spotify). Ouvrez la Régie et le Grand écran sur le PC ; les joueurs scannent le QR code affiché sur le Grand écran (étape Installation). La Régie rappelle l'adresse à taper dans le bloc « Rejoindre ».
 
 ## Préparer la soirée (parties)
 Une **partie** est une soirée préparée : ses manches (« Cinéma », « Années 80 »…) et, pour les manches QCM, leurs questions. Chaque partie est un fichier CSV du dossier `parties/`, à côté du serveur. Les points sont comptés par manche et le Bilan les affiche côte à côte.
@@ -78,7 +78,7 @@ Pendant une manche QCM, Espace, B, M et F sont sans effet.
 ## Grand écran
 Le Grand écran est la page projetée derrière l'animateur, face aux équipes. Il n'a aucun bouton : c'est la Régie qui choisit ce qu'il affiche.
 
-1. Sur le PC, ouvrez `http://localhost:3000/screen` dans une seconde fenêtre (lien « /screen » dans la Régie), glissez-la sur le projecteur et passez-la en plein écran (F11, ou ⌃⌘F sur Mac).
+1. Sur le PC, ouvrez `http://127.0.0.1:3000/screen` dans une seconde fenêtre (lien « /screen » dans la Régie), glissez-la sur le projecteur et passez-la en plein écran (F11, ou ⌃⌘F sur Mac).
 2. Dans la Régie, bloc « Grand écran », choisissez l'étape :
    - **Installation** : QR code en grand et équipes qui rejoignent la partie.
    - **Jeu** : classement en direct et équipe qui vient de buzzer.

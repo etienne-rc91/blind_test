@@ -435,8 +435,9 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`    Hôte    : http://${ip}:${PORT}/host?key=${HOST_KEY}`);
   }
   console.log('\n  Sur ce PC :');
-  console.log(`    Régie       : http://localhost:${PORT}/host?key=${HOST_KEY}`);
-  console.log(`    Grand écran : http://localhost:${PORT}/screen   (fenêtre à glisser sur le projecteur)\n`);
+  // 127.0.0.1 plutôt que localhost : c’est l’adresse de retour acceptée par Spotify.
+  console.log(`    Régie       : http://127.0.0.1:${PORT}/host?key=${HOST_KEY}`);
+  console.log(`    Grand écran : http://127.0.0.1:${PORT}/screen   (fenêtre à glisser sur le projecteur)\n`);
   const sp = spotify.status();
   console.log(`  Spotify : ${sp.connected ? 'connecté' : sp.configured ? 'non connecté' : 'non configuré'}\n`);
 });
