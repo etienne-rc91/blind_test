@@ -84,6 +84,7 @@
   .preview .pc b { flex: none; width: 1.5em; height: 1.5em; border-radius: 4px; display: grid; place-items: center; color: #fff; }
   .preview .pc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .preview .muted { color: #59608a; font-style: italic; }
+  .preview .pl { font-size: .9rem; font-weight: 800; text-align: center; color: #f2b705; margin: 0; }
   /* Morceau : barre du morceau entier, passage entre les poignées Début et Fin, tête de lecture */
   .song-ref { color: var(--muted); font-size: .9rem; overflow-wrap: anywhere; margin: 4px 0 0; }
   .player { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
@@ -140,10 +141,12 @@
         </div>
         <div id="buzzerEditor" hidden>
           <p class="hint" style="margin-top:8px">Sans morceau, la musique se joue à côté (comme avant). Avec des morceaux, la Régie les joue.</p>
-          <div class="split" style="margin-top:12px">
-            <div>
+          <div class="split" id="buzzerSplit" style="margin-top:12px">
+            <div id="songsCol">
               <div class="label">Morceaux</div>
               <ol class="items" id="songs" style="margin-top:6px"></ol>
+              <!-- Ajout d’un morceau, déplacé dans l’éditeur de question pour l’extrait d’une question QCM -->
+              <div id="clipAdd">
               <div class="row" style="margin-top:6px; flex-wrap:nowrap">
                 <button class="ghost" id="addFile">+ Fichier</button>
                 <button class="ghost" id="addSpotify" aria-expanded="false" aria-controls="spotifyPanel">+ Spotify</button>
@@ -160,6 +163,7 @@
                 <input type="text" id="spQuery" maxlength="200" placeholder="Rechercher : artiste, titre…" aria-label="Rechercher un titre sur Spotify" autocomplete="off" hidden>
                 <ol class="results" id="spResults" aria-label="Résultats Spotify"></ol>
                 <p class="err" id="spErr"></p>
+              </div>
               </div>
             </div>
             <div id="songEditor" hidden>
@@ -178,7 +182,7 @@
               <div class="bounds"><span id="sStart"></span><span id="sEnd"></span></div>
               <p class="hint" style="margin:6px 8px 0">Faites glisser les poignées, ou flèches ← → quand une poignée est sélectionnée (Maj : 5 s).</p>
               <button id="sListen" style="margin-top:10px">▶ Écouter le passage</button>
-              <label class="field"><span class="label">Réponse affichée en Régie</span>
+              <label class="field" id="sAnswerField"><span class="label">Réponse affichée en Régie</span>
                 <input type="text" id="sAnswer" maxlength="120" placeholder="Artiste — Titre">
               </label>
               <p class="todo" id="sTodo" style="margin-top:8px"></p>
@@ -202,6 +206,10 @@
               <p class="hint" style="margin:8px 0 6px">Propositions — cliquez sur la lettre de la bonne réponse :</p>
               <div class="choices" id="choices"></div>
               <p class="todo" id="qTodo"></p>
+              <!-- Extrait de la question : reçoit l’éditeur de morceau de la manche buzzer (mêmes éléments, déplacés) -->
+              <div id="extractSlot" style="margin-top:14px">
+                <div class="label">Extrait (facultatif)</div>
+              </div>
             </div>
           </div>
         </div>
@@ -224,6 +232,51 @@ let name = params.get('partie');           // nom enregistré (null : nouvelle p
 let sections = [];
 let selSection = -1, selQuestion = -1, selSong = -1;
 let dirty = false;
+
+// Passage édité par le lecteur et la barre de temps : le morceau choisi (manche buzzer)
+// ou l’extrait de la question choisie (manche QCM). Un seul éditeur sert aux deux.
+function editedClip() {
+  const s = sections[selSection];
+  if (!s) return null;
+  if (s.type === 'buzzer') return s.songs[selSong] || null;
+  if (s.type === 'qcm') return s.questions[selQuestion]?.extract || null;
+  return null;
+}
+// Destination d’un passage ajouté, capturée au moment du choix : l’envoi d’un fichier peut durer.
+function clipTarget() {
+  const s = sections[selSection] || null;
+  return { s, type: s?.type, q: s?.type === 'qcm' ? s.questions[selQuestion] || null : null };
+}
+// Manche buzzer : ajoute un morceau (null : supprime le morceau choisi).
+// Manche QCM : remplace l’extrait de la question (null : le retire, la clé disparaît).
+function setClip(clip, target = clipTarget()) {
+  const { s, type, q } = target;
+  if (!s || !sections.includes(s) || s.type !== type) return;   // manche supprimée ou changée de type entre-temps
+  if (type === 'qcm') {
+    if (!q || !s.questions.includes(q)) return;                 // question supprimée entre-temps
+    if (clip) q.extract = clip; else delete q.extract;
+  } else if (clip) {
+    s.songs.push(clip);
+    if (sections[selSection] === s) selSong = s.songs.length - 1;
+  } else {
+    s.songs.splice(selSong, 1);
+    selSong = Math.min(selSong, s.songs.length - 1);
+  }
+  touch(); render();
+}
+// Une question n’a qu’un extrait : en ajouter un remplace l’existant, après confirmation.
+function confirmReplace() {
+  const { q } = clipTarget();
+  return !q?.extract || confirm(`Remplacer l’extrait de la question ${selQuestion + 1} ?`);
+}
+// Place les blocs d’ajout et l’éditeur de passage : colonne des morceaux (buzzer) ou éditeur de question (QCM).
+function placeClipEditor(qcm) {
+  const add = $('clipAdd'), ed = $('songEditor');
+  const addTo = qcm ? $('extractSlot') : $('songsCol');
+  const edTo = qcm ? $('extractSlot') : $('buzzerSplit');
+  if (add.parentElement !== addTo || ed.parentElement !== edTo) { addTo.append(add); edTo.append(ed); }
+  $('songFile').multiple = !qcm;
+}
 
 const newQuestion = () => ({ text: '', image: null, choices: { A: '', B: '', C: '', D: '' }, answer: null });
 const touch = () => { dirty = true; };
@@ -253,19 +306,22 @@ function questionTodo(q) {
   if (!q.text.trim() && !q.image) out.push('texte ou image');
   for (const l of LETTERS) if (!q.choices[l].trim()) out.push(`proposition ${l}`);
   if (!q.answer) out.push('bonne réponse');
+  if (q.extract) { const x = extractTodo(q.extract); if (x.length) out.push(`extrait : ${x.join(', ')}`); }
   return out;
 }
 const nameKey = (n) => n.trim().toLowerCase();
 const isDuplicate = (s) => !!s.name.trim() && sections.filter((x) => nameKey(x.name) === nameKey(s.name)).length > 1;
 // L'existence du fichier n'est pas vérifiée ici : le serveur le signale à l'enregistrement.
-function songTodo(m) {
+function clipTodo(m) {
   const out = [];
-  if (!(m.answer || '').trim()) out.push('réponse');
   if (!Number.isInteger(m.start)) out.push('début');
   if (!Number.isInteger(m.end)) out.push('fin');
   else if (Number.isInteger(m.start) && m.end <= m.start) out.push('fin après le début');
   return out;
 }
+const songTodo = (m) => [...(!(m.answer || '').trim() ? ['réponse'] : []), ...clipTodo(m)];
+// Un extrait n’a pas de réponse ; un brouillon CSV peut en revanche avoir Début/Fin sans musique.
+const extractTodo = (x) => [...(!x.ref ? ['musique'] : []), ...clipTodo(x)];
 const sectionIncomplete = (s) => !s.name.trim() || isDuplicate(s)
   || (s.type === 'qcm' && (!s.questions.length || s.questions.some((q) => questionTodo(q).length)))
   || (s.type === 'buzzer' && s.songs.some((m) => songTodo(m).length));
@@ -326,7 +382,7 @@ function renderQuestions(s) {
   const ol = $('questions'); ol.innerHTML = '';
   s.questions.forEach((q, i) => {
     const li = el('li', i === selQuestion ? 'on' : '');
-    li.append(el('span', 'grip', '⋮⋮'), el('span', 'txt', `${i + 1}. ${q.text.trim() || (q.image ? `🖼 ${q.image}` : 'Question vide')}`));
+    li.append(el('span', 'grip', '⋮⋮'), el('span', 'txt', `${i + 1}. ${q.extract ? '♪ ' : ''}${q.text.trim() || (q.image ? `🖼 ${q.image}` : 'Question vide')}`));
     li.append(questionTodo(q).length ? Object.assign(el('span', 'warn', '⚠'), { title: 'À compléter' }) : el('span', 'ok', `${q.answer} ✓`));
     li.append(moveButtons(i, s.questions, (from, to) => { selQuestion = follow(selQuestion, from, to); touch(); render(); }));
     li.onclick = () => { selQuestion = i; render(); };
@@ -387,8 +443,8 @@ function render() {
   const s = sections[selSection];
   $('noSection').hidden = !!s;
   $('sectionEditor').hidden = !s;
-  const m = s && s.type === 'buzzer' ? s.songs[selSong] || null : null;
-  syncPlayer(m);                                   // autre morceau (ou plus de morceau) : la lecture s'arrête
+  const m = editedClip();
+  syncPlayer(m);                                   // autre passage (ou plus de passage) : la lecture s'arrête
   if (!s) return;
   if (document.activeElement !== $('secName')) $('secName').value = s.name;
   $('secName').classList.toggle('missing', !s.name.trim() || isDuplicate(s));
@@ -396,9 +452,10 @@ function render() {
   $('secType').value = s.type;
   $('buzzerEditor').hidden = s.type !== 'buzzer';
   $('qcmEditor').hidden = s.type !== 'qcm';
+  placeClipEditor(s.type === 'qcm');
+  $('songEditor').hidden = !m;
   if (s.type === 'buzzer') {
     renderSongs(s);
-    $('songEditor').hidden = !m;
     if (m) renderSong(m);
     return;
   }
@@ -408,6 +465,7 @@ function render() {
   $('questionEditor').hidden = !q;
   $('previewSlot').hidden = !q;
   if (q) renderQuestion(q);
+  if (m) renderSong(m);
 }
 // Pendant la frappe : listes et indicateurs à jour, sans reconstruire les champs.
 const renderLight = render;
@@ -548,6 +606,8 @@ window.renderExtras = (q) => {
   if (q.image) { const im = el('img'); im.src = src; im.alt = ''; body.append(im); }
   if (q.text.trim()) body.append(el('p', 'pq', q.text));
   if (!q.image && !q.text.trim()) body.append(el('p', 'pq muted', 'Texte ou image de la question'));
+  // Indicateur d’écoute : sur le Grand écran, il précède la question pendant l’extrait.
+  const listen = q.extract ? el('p', 'pl', '♪ Écoutez…') : null;
   const grid = el('div', 'pc');
   for (const l of LETTERS) {
     const c = el('div');
@@ -555,7 +615,7 @@ window.renderExtras = (q) => {
     c.append(b, el('span', q.choices[l].trim() ? null : 'muted', q.choices[l].trim() || `Proposition ${l}`));
     grid.append(c);
   }
-  preview.append(head, body, grid);
+  preview.append(head, ...(listen ? [listen] : []), body, grid);
 };
 
 // ----- Morceaux : fichiers copiés dans musiques/ par le serveur -----
@@ -589,12 +649,13 @@ function defaultEnd(d) {
   return d < 2 ? Math.max(1, Math.floor(d)) : Math.min(DEFAULT_PASSAGE, Math.floor(d));
 }
 
-$('addFile').onclick = () => $('songFile').click();
+$('addFile').onclick = () => { if (confirmReplace()) $('songFile').click(); };
 $('songFile').onchange = async () => {
-  const files = [...$('songFile').files];
+  const target = clipTarget();                     // la manche (et la question) visée au moment du choix
+  const qcm = target.type === 'qcm';
+  const files = [...$('songFile').files].slice(0, qcm ? 1 : undefined);
   $('songFile').value = '';
   if (!files.length) return;
-  const s = sections[selSection];                  // la manche visée au moment du choix
   const errors = [];
   $('addErr').textContent = '';
   $('addFile').disabled = true;
@@ -606,10 +667,10 @@ $('songFile').onchange = async () => {
       const res = await fetch(`/api/musiques?filename=${enc(f.name)}`, { method: 'POST', headers: { 'x-host-key': key }, body: f });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
-      // Réponse proposée : le nom du fichier tel que choisi (avec ses espaces), sans l'extension.
-      s.songs.push({ source: 'file', ref: data.name, start: 0, end: defaultEnd(d), answer: f.name.replace(/\.[^.]+$/, '').trim() });
-      if (sections[selSection] === s) selSong = s.songs.length - 1;
-      touch(); render();
+      const clip = { source: 'file', ref: data.name, start: 0, end: defaultEnd(d) };
+      // Réponse proposée (morceau seulement) : le nom du fichier tel que choisi (avec ses espaces), sans l'extension.
+      if (!qcm) clip.answer = f.name.replace(/\.[^.]+$/, '').trim();
+      setClip(clip, target);
     } catch (e) {
       errors.push(`${f.name} : ${e.message}`);
     }
@@ -619,13 +680,11 @@ $('songFile').onchange = async () => {
 };
 
 $('delSong').onclick = () => {
-  const s = sections[selSection];
-  if (!confirm(`Supprimer le morceau ${selSong + 1} ?`)) return;
-  s.songs.splice(selSong, 1);
-  selSong = Math.min(selSong, s.songs.length - 1);
-  touch(); render();
+  const qcm = clipTarget().type === 'qcm';
+  if (!confirm(qcm ? `Retirer l’extrait de la question ${selQuestion + 1} ?` : `Supprimer le morceau ${selSong + 1} ?`)) return;
+  setClip(null);
 };
-$('sAnswer').oninput = () => { sections[selSection].songs[selSong].answer = $('sAnswer').value; touch(); renderLight(); };
+$('sAnswer').oninput = () => { const m = editedClip(); if (!m) return; m.answer = $('sAnswer').value; touch(); renderLight(); };
 
 // ----- Lecteur du morceau choisi -----
 // Un lecteur par source, créé au premier besoin (le lecteur Spotify seulement si un morceau Spotify est choisi) ;
@@ -677,11 +736,14 @@ const span = (m) => (dur !== null ? Math.max(1, Math.floor(dur)) : Math.max(DEFA
 const pct = (t, m) => `${clamp(t / span(m), 0, 1) * 100}%`;
 
 function renderSong(m) {
-  $('sLabel').textContent = `Morceau ${selSong + 1}`;
-  $('sRef').textContent = `${m.source === 'spotify' ? '♪' : '📁'} ${m.ref}`;
-  if (document.activeElement !== $('sAnswer')) $('sAnswer').value = m.answer || '';
-  $('sAnswer').classList.toggle('missing', !(m.answer || '').trim());
-  const todo = songTodo(m);
+  const qcm = sections[selSection].type === 'qcm';  // extrait d'une question : pas de réponse, il se retire
+  $('sLabel').textContent = qcm ? '' : `Morceau ${selSong + 1}`;
+  $('delSong').textContent = qcm ? 'Retirer l’extrait' : 'Supprimer le morceau';
+  $('sAnswerField').hidden = qcm;
+  $('sRef').textContent = `${m.source === 'spotify' ? '♪' : '📁'} ${m.ref || 'aucune musique'}`;
+  if (!qcm && document.activeElement !== $('sAnswer')) $('sAnswer').value = m.answer || '';
+  $('sAnswer').classList.toggle('missing', !qcm && !(m.answer || '').trim());
+  const todo = qcm ? extractTodo(m) : songTodo(m);
   $('sTodo').textContent = todo.length ? `À compléter : ${todo.join(', ')}.` : '';
   paintSong();
 }
@@ -884,12 +946,14 @@ function renderResults(tracks) {
   }
 }
 function addSpotifySong(t) {
-  const s = sections[selSection];
-  if (!s || s.type !== 'buzzer') return;
+  const target = clipTarget();
+  if (target.type !== 'buzzer' && !(target.type === 'qcm' && target.q)) return;
+  if (!confirmReplace()) return;
   trackInfo.set(t.id, t);
   const end = t.durationSec > 0 ? Math.max(1, Math.min(DEFAULT_PASSAGE, t.durationSec)) : DEFAULT_PASSAGE;
-  s.songs.push({ source: 'spotify', ref: t.id, start: 0, end, answer: `${t.artists} — ${t.name}`.slice(0, 120) });
-  selSong = s.songs.length - 1; touch(); render();
+  const clip = { source: 'spotify', ref: t.id, start: 0, end };
+  if (target.type === 'buzzer') clip.answer = `${t.artists} — ${t.name}`.slice(0, 120);
+  setClip(clip, target);
 }
 
 // ----- Chargement -----
