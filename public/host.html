@@ -389,9 +389,13 @@ async function syncSound() {
   if (key !== loadedKey) {
     stopAll();
     loadedKey = key; songError = ''; pos = null; posKey = null;
-    try { player = getPlayer(cur.source); } catch (e) { player = null; showSongError(e.message); return; }
-    await player.load(cur);
-    await player.seek(cur.start);
+    // Un chargement raté ne compte pas comme fait : la mise à jour suivante recharge et repart de Début
+    // (sinon la lecture partirait de 0:00).
+    try { player = getPlayer(cur.source); } catch (e) { player = null; loadedKey = null; showSongError(e.message); return; }
+    try {
+      await player.load(cur);
+      await player.seek(cur.start);
+    } catch (e) { loadedKey = null; throw e; }   // l’erreur reste affichée par scheduleSync
     pos = cur.start; posKey = key;
     renderSongProgress();
   }
