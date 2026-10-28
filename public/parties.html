@@ -66,14 +66,18 @@ $('back').href = `/host?key=${q(key)}`;
 $('newBtn').href = `/creation?key=${q(key)}`;
 
 async function api(method, route, body, raw) {
+  const r = await call(method, route, body, raw);
+  if (!r.ok) throw new Error(r.data.error || `Erreur ${r.status}`);
+  return r.data;
+}
+async function call(method, route, body, raw) {
   const res = await fetch(`/api${route}`, {
     method,
     headers: { 'x-host-key': key, ...(body && !raw ? { 'content-type': 'application/json' } : {}) },
     body: body ? (raw ? body : JSON.stringify(body)) : undefined,
   });
   const data = await res.json().catch(() => ({ error: 'Réponse illisible du serveur.' }));
-  if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
-  return data;
+  return { ok: res.ok, status: res.status, data };
 }
 function say(text, kind = 'ok') { $('msg').className = kind; $('msg').textContent = text; }
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -131,10 +135,18 @@ function render() {
   }
 }
 
+// Le serveur demande confirmation dès qu'une équipe est en jeu (décompte à jour, même si la page est ouverte depuis longtemps).
 async function play(name) {
-  if (data.teamCount > 0 && !confirm(`Commencer une nouvelle soirée avec « ${name} » ? Les équipes et les scores actuels seront effacés.`)) return;
-  try { await api('POST', `/parties/${q(name)}/play`); say(`« ${name} » est prête : nouvelle soirée lancée. Les équipes peuvent rejoindre.`); await load(); }
-  catch (e) { say(e.message, 'err'); }
+  try {
+    let r = await call('POST', `/parties/${q(name)}/play`, {});
+    if (r.status === 409 && r.data.needConfirm) {
+      if (!confirm(`Commencer une nouvelle soirée avec « ${name} » ? Les ${r.data.teamCount} équipe(s) et les scores actuels seront effacés.`)) return;
+      r = await call('POST', `/parties/${q(name)}/play`, { confirm: true });
+    }
+    if (!r.ok) throw new Error(r.data.error || `Erreur ${r.status}`);
+    say(`« ${name} » est prête : nouvelle soirée lancée. Les équipes peuvent rejoindre.`);
+    await load();
+  } catch (e) { say(e.message, 'err'); }
 }
 
 async function remove(name) {

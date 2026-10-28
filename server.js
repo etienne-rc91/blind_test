@@ -132,8 +132,16 @@ api.put('/parties/:name', (req, res) => {
   const live = game.getLive();
   const isCurrent = overwrite === true && sameName(cleanPartieName(req.params.name), live.partieName);
   let warnings = [];
-  if (isCurrent && Array.isArray(sections)) {
-    const check = checkLiveEdit({ oldSections: live.sections, newSections: sections, progress: live.progress, currentSection: live.currentSection, qcmStep: live.qcmStep });
+  if (isCurrent) {
+    // Vérifie la version exacte qui sera écrite et relue, avec la position d'origine (orig) envoyée par Création.
+    const prep = parties.prepare(sections);
+    if (!prep.ok) return fail(res, prep);
+    const withOrig = prep.sections.map((sec, i) => ({
+      ...sec,
+      orig: sections[i]?.orig,
+      questions: sec.questions.map((q, k) => ({ ...q, orig: sections[i]?.questions?.[k]?.orig })),
+    }));
+    const check = checkLiveEdit({ oldSections: live.sections, newSections: withOrig, progress: live.progress, currentSection: live.currentSection, qcmStep: live.qcmStep });
     if (!check.ok) return res.status(409).json({ error: check.error });
     warnings = check.warnings;
   }
@@ -142,8 +150,7 @@ api.put('/parties/:name', (req, res) => {
   let applied = false;
   if (isCurrent) {
     if (r.problems.length) warnings.push('La partie est incomplète : le jeu continue avec la version précédente.');
-    else {
-      game.replaceSections(parties.read(r.name).sections);
+    else if (game.replaceSections(parties.read(r.name).sections)) {
       applied = true;
       broadcast();
     }
@@ -171,6 +178,11 @@ api.post('/parties/:name/play', (req, res) => {
   const r = parties.read(req.params.name);
   if (!r.ok) return fail(res, r);
   if (r.problems.length) return res.status(422).json({ error: `Partie incomplète : ${r.problems.join(' ; ')}.` });
+  // Des équipes ont rejoint : la page doit confirmer (le décompte vient du serveur, pas d'une page ouverte depuis longtemps).
+  const teamCount = game.publicState({ role: 'host' }).teams.length;
+  if (teamCount > 0 && req.body?.confirm !== true) {
+    return res.status(409).json({ error: `${teamCount} équipe(s) en jeu : confirmez pour les effacer.`, needConfirm: true, teamCount });
+  }
   const { kickedSockets } = game.newEvening({ name: r.name, sections: r.sections });
   for (const sid of kickedSockets) {
     const sock = io.sockets.sockets.get(sid);
@@ -211,7 +223,12 @@ app.use('/api', api);
 const reply = (ack) => (typeof ack === 'function' ? ack : () => {});
 const HOST_ACTIONS = ['open', 'close', 'correct', 'wrong', 'unexclude', 'score', 'kick', 'reset-scores', 'stage', 'join-ip', 'section', 'qcm', 'countdown'];
 
+const safe = (fn) => (...args) => {
+  try { fn(...args); } catch (e) { console.error('  Erreur pendant une action :', e); }
+};
+
 io.on('connection', (socket) => {
+  const on = (event, fn) => socket.on(event, safe(fn));
   const { role, key } = socket.handshake.auth || {};
   const isHost = role === 'host' && key === HOST_KEY;
   // Rôle effectif : sans la bonne clé, on est joueur. Le Grand écran n'a pas de clé : il ne reçoit aucun secret.
@@ -225,21 +242,21 @@ io.on('connection', (socket) => {
   }
 
   // --- Joueurs ---
-  socket.on('join', (rawName, ack) => {
+  on('join', (rawName, ack) => {
     const res = game.join(socket.id, rawName);
     if (res.ok) socket.data.teamId = res.teamId;
     reply(ack)(res);
     if (res.ok) broadcast();
   });
 
-  socket.on('buzz', (ack) => {
+  on('buzz', (ack) => {
     const at = performance.now();                 // horodatage le plus tôt possible
     const res = game.buzz(socket.id, at);
     reply(ack)(res);
     if (res.ok) broadcast();
   });
 
-  socket.on('answer', (letter, ack) => {
+  on('answer', (letter, ack) => {
     const res = game.answer(socket.id, letter);
     reply(ack)(res);
     if (res.ok) broadcast();
@@ -247,7 +264,7 @@ io.on('connection', (socket) => {
 
   // --- Hôte ---
   for (const action of HOST_ACTIONS) {
-    socket.on(`host:${action}`, (payload) => {
+    on(`host:${action}`, (payload) => {
       if (!isHost) return;
       const res = game.host(action, payload);
       for (const sid of res.kickedSockets || []) {
@@ -257,12 +274,12 @@ io.on('connection', (socket) => {
       broadcast();
     });
   }
-  socket.on('host:undo', () => {
+  on('host:undo', () => {
     if (!isHost || !game.undo()) return;
     broadcast();
   });
 
-  socket.on('disconnect', () => {
+  on('disconnect', () => {
     game.leave(socket.id);
     broadcast();
   });

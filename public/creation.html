@@ -185,7 +185,14 @@ function questionTodo(q) {
   if (!q.answer) out.push('bonne réponse');
   return out;
 }
-const sectionIncomplete = (s) => !s.name.trim() || (s.type === 'qcm' && (!s.questions.length || s.questions.some((q) => questionTodo(q).length)));
+const nameKey = (n) => n.trim().toLowerCase();
+const isDuplicate = (s) => !!s.name.trim() && sections.filter((x) => nameKey(x.name) === nameKey(s.name)).length > 1;
+const sectionIncomplete = (s) => !s.name.trim() || isDuplicate(s) || (s.type === 'qcm' && (!s.questions.length || s.questions.some((q) => questionTodo(q).length)));
+// Position de chaque manche et question dans la version enregistrée : le serveur s'en sert pour ne jamais
+// mélanger les scores d'une partie en cours (une manche existante doit garder sa place).
+function markOrigins() {
+  sections.forEach((s, i) => { s.orig = i; s.questions.forEach((q, k) => { q.orig = k; }); });
+}
 
 // ----- Réordonner : glisser-déposer et boutons ↑ ↓ -----
 function move(list, from, to) { const [x] = list.splice(from, 1); list.splice(to, 0, x); }
@@ -283,7 +290,8 @@ function render() {
   $('sectionEditor').hidden = !s;
   if (!s) return;
   if (document.activeElement !== $('secName')) $('secName').value = s.name;
-  $('secName').classList.toggle('missing', !s.name.trim());
+  $('secName').classList.toggle('missing', !s.name.trim() || isDuplicate(s));
+  $('secName').title = isDuplicate(s) ? 'Une autre manche porte déjà ce nom.' : '';
   $('secType').value = s.type;
   $('buzzerHint').hidden = s.type !== 'buzzer';
   $('qcmEditor').hidden = s.type !== 'qcm';
@@ -299,7 +307,9 @@ const renderLight = render;
 
 // ----- Actions -----
 $('addSection').onclick = () => {
-  sections.push({ name: `Manche ${sections.length + 1}`, type: 'buzzer', questions: [] });
+  let n = sections.length + 1;
+  while (sections.some((x) => nameKey(x.name) === `manche ${n}`)) n += 1;
+  sections.push({ name: `Manche ${n}`, type: 'buzzer', questions: [] });
   selSection = sections.length - 1; selQuestion = -1; touch(); render();
   $('secName').focus(); $('secName').select();
 };
@@ -348,6 +358,7 @@ async function saveTo(target, overwrite) {
   try {
     const r = await api('PUT', `/parties/${enc(target)}`, { sections, overwrite });
     name = r.name; dirty = false;
+    markOrigins();                                   // le fichier correspond maintenant à la page
     history.replaceState(null, '', `/creation?key=${enc(key)}&partie=${enc(name)}`);
     showTitle();
     const notes = [...r.warnings];
@@ -440,7 +451,7 @@ async function load() {
   if (!name) { render(); $('nameInput').focus(); return; }
   try {
     const r = await api('GET', `/parties/${enc(name)}`);
-    name = r.name; sections = r.sections; showTitle();
+    name = r.name; sections = r.sections; markOrigins(); showTitle();
     selSection = sections.length ? 0 : -1;
     selQuestion = sections[0]?.questions.length ? 0 : -1;
     if (r.problems.length) say('warn', 'Cette partie est incomplète :', r.problems);

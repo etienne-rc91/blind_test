@@ -138,3 +138,48 @@ test('import stores an uploaded csv', async () => {
   r = await json(await api('POST', '/api/parties-import?name=Cassée', Buffer.from('nom\n'), { raw: true }));
   assert.equal(r.status, 422);
 });
+
+// ---------- Corrections de la relecture finale ----------
+test('renaming a qcm manche to its neighbour name is refused, server keeps running', async () => {
+  const two = [{ name: 'A', type: 'qcm', questions: [Q('1')] }, { name: 'B', type: 'qcm', questions: [Q('2')] }];
+  await api('PUT', '/api/parties/Fusion', { sections: two, overwrite: false });
+  await api('POST', '/api/parties/Fusion/play', { confirm: true });
+  const merged = JSON.parse(JSON.stringify(two));
+  merged[1].name = 'A';
+  const r = await json(await api('PUT', '/api/parties/Fusion', { sections: merged, overwrite: true }));
+  assert.equal(r.status, 422);
+  assert.match(r.body.error, /deux manches/i);
+  assert.equal((await json(await api('GET', '/api/parties/Fusion'))).body.sections.length, 2);
+  assert.equal((await api('GET', '/api/parties')).status, 200);
+});
+
+// Un téléphone minimal (protocole socket.io texte via le WebSocket intégré à Node) qui rejoint une équipe.
+function joinTeam(name) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`${base.replace('http', 'ws')}/socket.io/?EIO=4&transport=websocket`);
+    ws.onmessage = (m) => {
+      const d = String(m.data);
+      if (d === '2') ws.send('3');
+      else if (d.startsWith('0')) ws.send('40{"role":"player"}');
+      else if (d.startsWith('40')) ws.send(`421${JSON.stringify(['join', name])}`);
+      else if (d.startsWith('431')) resolve(ws);
+    };
+    ws.onerror = reject;
+  });
+}
+
+test('play asks for confirmation when teams exist', async () => {
+  await api('PUT', '/api/parties/Confirm', { sections: SECTIONS, overwrite: false });
+  await api('POST', '/api/parties/Confirm/play', { confirm: true });
+  const ws = await joinTeam('Loups');
+  let r = await json(await api('POST', '/api/parties/Confirm/rename', { to: 'Confirm' }));
+  await api('PUT', '/api/parties/Autre', { sections: SECTIONS, overwrite: false });
+  r = await json(await api('POST', '/api/parties/Autre/play'));
+  assert.equal(r.status, 409);
+  assert.equal(r.body.needConfirm, true);
+  assert.equal(r.body.teamCount, 1);
+  assert.equal((await json(await api('GET', '/api/parties'))).body.current, 'Confirm');
+  r = await json(await api('POST', '/api/parties/Autre/play', { confirm: true }));
+  assert.equal(r.status, 200);
+  ws.close();
+});
