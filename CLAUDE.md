@@ -64,7 +64,7 @@ buzzer/
 ├── server.js            Serveur : routes Express, API /api (parties, images, musiques, vidéos, youtube, spotify), sockets, sauvegarde, Régie qui joue le son
 ├── lib/
 │   ├── game.js          État du jeu et règles (manches, QCM, annulation, nouvelle soirée), sans réseau
-│   ├── songs.js         Morceaux d’une manche buzzer : fichiers audio, Début/Fin, validation
+│   ├── songs.js         Morceaux d’une manche buzzer : fichiers audio et vidéo, Spotify, YouTube, Début/Fin, validation
 │   ├── spotify.js       Connexion Spotify (PKCE), recherche, jetons (spotify.json)
 │   ├── youtube.js       Liens YouTube : identifiant, titre et miniature (oEmbed)
 │   ├── upload.js        Réception des fichiers vidéo, écrits en flux sur le disque (jamais en mémoire)
@@ -78,8 +78,8 @@ buzzer/
 │   ├── host.html        Régie (PC) : contrôles clavier, manches, équipes
 │   ├── player.html      Buzzer (téléphone)
 │   ├── screen.html      Grand écran (projecteur)
-│   ├── players.js       Lecteur audio commun (fichiers + Spotify), partagé par la Régie et Création
-│   ├── video-view.js    Affichage vidéo commun (fichier + YouTube), partagé par le Grand écran et Création ; aussi `require`-able par Node
+│   ├── players.js       Lecteurs communs (fichier audio, Spotify, fichier vidéo, YouTube), partagés par la Régie, Création et le Grand écran
+│   ├── video-view.js    Règles d’affichage des passages vidéo (fonctions pures), partagées par le Grand écran et la Régie ; aussi `require`-able par Node
 │   ├── parties.html     Sélection de la partie (clé hôte)
 │   └── creation.html    Création / modification d'une partie (clé hôte)
 ├── parties/             Une partie = un fichier CSV (ignoré par git)
@@ -94,12 +94,13 @@ buzzer/
 
 **Flux de données**
 - L'état vit en mémoire dans `server.js` : `teams` (Map) et `round` (`phase` : `closed | open | buzzed`, `buzzes`, `excluded`, `number`).
-- Après chaque changement, `broadcast()` envoie `publicState()` à **tous** les sockets (événement `state`) et planifie la sauvegarde.
+- Après chaque changement, `broadcast()` envoie à chaque socket son propre `publicState()` (événement `state`) et planifie la sauvegarde : l’état `host` à la room `hosts`, puis, socket par socket, l’état `screen` de chaque Grand écran (`reader` vrai pour celui qui lit, seul à recevoir `media`) et l’état `player` de chaque Buzzer (selon son équipe).
 - `publicState()` est le contrat entre serveur et pages. Les équipes y sont déjà **triées par score décroissant**, puis par nom.
 
 **Rôles des sockets** (via `socket.handshake.auth`)
 - `player` : peut `join` et `buzz`.
-- `host` + `key === HOST_KEY` : peut envoyer les événements `host:*`. Rejoint la room `hosts` et reçoit `info` (IPs et port).
+- `host` + `key === HOST_KEY` : peut envoyer les événements `host:*`. Rejoint la room `hosts` et reçoit `info` (IPs et port), ainsi que `video` : le statut relayé du Grand écran qui lit (`reader`, `screens` = nombre de Grands écrans connectés, `unlocked`, `key`, `pos`, `error`).
+- `screen` : aucune clé, aucun secret. Rejoint la room `screens` et reçoit `info`. Le **Grand écran qui lit** (`lib/screens.js` : le dernier ouvert depuis `127.0.0.1`) est le seul à recevoir `media` et le seul écouté pour `screen:ended { seq }` (fin d’un passage vidéo, prise en compte seulement à l’étape Jeu) et `screen:video` (son statut, relayé aux Régies) ; ces événements venant d’un autre Grand écran sont ignorés.
 - La route `/host` exige `?key=HOST_KEY`. La clé est aléatoire au démarrage sauf si `HOST_KEY` est défini.
 
 **Annulation (touche Z)**
@@ -123,14 +124,17 @@ SCORES_FILE=/chemin/scores.json npm start
 
 Tous les paramètres (`HOST_KEY`, `PORT`, `SPOTIFY_CLIENT_ID`, `PARTIES_DIR`, `MUSIQUES_DIR`, `IMAGES_DIR`, `VIDEOS_DIR`, `SCORES_FILE`, `SPOTIFY_FILE`) peuvent être mis dans `.env` (modèle : `.env.example`, lu par `node --env-file-if-exists`, Node ≥ 22.9). Un nouveau paramètre lu dans `process.env` doit être ajouté à `.env.example`.
 
-Les tests automatisés se lancent avec `npm test` (`node --test`, y compris `server.test.js`). Vérification manuelle en plus : lancer le serveur, ouvrir la Régie (`/host?key=…`) et deux Buzzers (`/`), jouer un morceau complet (Espace, buzz, B / M, Z).
+Les tests automatisés se lancent avec `npm test` (`node --test`, y compris `server.test.js`). Vérification manuelle en plus : lancer le serveur, ouvrir la Régie (`/host?key=…`) et deux Buzzers (`/`), jouer un morceau complet (Espace, buzz, B / M, Z). Pour les vidéos, dans Chrome, avec le Grand écran ouvert à `http://127.0.0.1:<port>/screen` et cliqué une fois, étape Jeu :
+- fichier vidéo : Espace (la vidéo joue), buzz (le bandeau la couvre), M (reprise), Fin (cache « 🎬 Morceau n / total »), B (révélation au-dessus du classement), R (la vidéo rejoue avec la bande de réponse), Z ;
+- YouTube : lecture, pause au buzz, R après la fin du passage ; le titre YouTube et ses suggestions ne doivent jamais être visibles ;
+- QCM : question avec extrait vidéo (cache puis vidéo, question à Fin), R pendant le compte à rebours (bande avec le temps et les propositions).
 
 ## 5. Conventions
 
 - **Langue** : interface, README et commentaires de code en **français** (le public et l'animateur sont francophones). Identifiants en anglais. Messages de commit en **anglais**, format Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`…).
 - **Typographie française** dans l'UI : apostrophe typographique `’`, espace avant `:` `?` `!`.
 - **Style JS** : CommonJS côté serveur, pas de point-virgule omis, fonctions courtes, commentaires qui expliquent le *pourquoi*.
-- **Pages** : un seul fichier HTML par écran, CSS et JS inline. Seules exceptions assumées : `public/players.js`, le lecteur audio commun à la Régie et à Création (évite de dupliquer la couche Spotify), et `public/video-view.js`, l’affichage vidéo commun au Grand écran et à Création. Couleurs en variables CSS sur `:root`, avec variante `prefers-color-scheme: dark`. Respecter `prefers-reduced-motion`.
+- **Pages** : un seul fichier HTML par écran, CSS et JS inline. Seules exceptions assumées : `public/players.js`, les lecteurs communs à la Régie, à Création et au Grand écran (évite de dupliquer les couches Spotify et YouTube), et `public/video-view.js`, les règles d’affichage vidéo communes au Grand écran et à la Régie (testées sous Node). Couleurs en variables CSS sur `:root`, avec variante `prefers-color-scheme: dark`. Respecter `prefers-reduced-motion`.
 - **Validation des entrées** côté serveur : tout ce qui vient d'un socket est nettoyé (`cleanName`, vérification d'entier, bornes).
 - **Nouvelle page** : ajouter sa route dans `server.js` (avant `express.static`), la documenter dans le README.
 - Mettre à jour le README (section « Déroulé » ou « Limites connues ») quand un comportement visible par l'animateur change.
