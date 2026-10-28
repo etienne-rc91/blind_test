@@ -76,7 +76,9 @@
   #qExtract .songActions { margin-top: 0; }
   /* Morceau (manche avec morceaux) : réponse, avancement du passage, liste. Hauteur bornée pour que tout tienne dans la fenêtre. */
   #songPanel { flex: none; max-height: 44vh; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 12px; }
-  #songPanel[hidden], #soundHere[hidden], #bNextSection[hidden] { display: none; }
+  #songPanel[hidden], #soundHere[hidden], #bNextSection[hidden], #videoWarning[hidden] { display: none; }
+  /* Passage vidéo : le Grand écran qui lit est absent, pas à l’étape Jeu ou attend un clic. */
+  #videoWarning { flex: none; margin: 0; padding: 8px 14px; border-radius: 12px; border: 2px solid var(--gold); background: var(--panel); font-weight: 700; }
   .songMain, .songSide { background: var(--panel); border: 3px solid var(--line); border-radius: 18px; padding: 14px 18px; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
   .songSide { overflow: hidden; border-width: 2px; }
   .songHead { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--muted); font-size: 1.05rem; }
@@ -154,6 +156,7 @@
 <body>
 <div class="wrap">
   <section id="stage">
+    <p id="videoWarning" role="status" hidden></p>
     <div id="songPanel" hidden>
       <div class="songMain">
         <div class="songHead"><span id="songMeta"></span><button id="soundHere" hidden title="Jouer la musique sur ce PC plutôt que sur l’autre Régie">Le son sort ici</button></div>
@@ -250,6 +253,7 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="/players.js"></script>
+<script src="/video-view.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const key = new URLSearchParams(location.search).get('key');
@@ -386,6 +390,11 @@ let syncing = Promise.resolve();
 let playPending = false;     // un play() est en cours (un lancement Spotify peut prendre une seconde)
 let muteGen = 0;             // incrémenté à chaque coupure immédiate : un play() en cours ne vaut plus lecture
 
+// Passage vidéo : lu par le Grand écran, jamais par la Régie. Son statut arrive relayé par le serveur (événement video).
+const isVideo = (x) => !!x && (x.source === 'video' || x.source === 'youtube');
+let video = { reader: false, unlocked: false, key: null, pos: null, error: null };
+socket.on('video', (v) => { video = v; if (state) { renderVideoWarning(); renderSongProgress(); } });
+
 const curSong = () => (state?.song && state.song.index !== null ? state.song.songs[state.song.index] : null);
 const songKey = () => `${state.currentSection}:${state.song?.index}:${state.song?.seq}`;
 const fmtTime = (sec) => { const t = Math.max(0, Math.floor(sec)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
@@ -405,7 +414,7 @@ function showSongError(msg) { songError = `Lecture impossible : ${msg}`; renderS
 function scheduleSync() { syncing = syncing.then(syncSound).catch((e) => showSongError(e.message || String(e))); }
 async function syncSound() {
   const cur = curSong();
-  if (!soundMine || !cur) return stopAll();
+  if (!soundMine || !cur || isVideo(cur)) return stopAll();   // un passage vidéo : aucun lecteur, ni host:ended, ni tick
   const key = songKey();
   if (key !== loadedKey) {
     stopAll();
@@ -612,7 +621,7 @@ function renderExtract(q, done) {
   if (box.hidden) return;
   const launched = !!curSong();
   $('qxMeta').textContent = `Extrait · ${sourceLabel(x)}`;
-  $('qxSoundHere').hidden = soundMine;
+  $('qxSoundHere').hidden = soundMine || isVideo(x);
   $('qxState').textContent = launched ? songStatusLabel(state.song) : 'Pas encore lancé';
   $('qxReplay').disabled = !launched;
   $('qxSkip').hidden = q.step !== 'listening';
@@ -630,7 +639,8 @@ function songStatusLabel(sg) {
   if (sg.audio === 'paused') return state.qcm ? 'Coupé' : 'En pause';
   return 'Arrêté';
 }
-const sourceLabel = (x) => (x.source === 'spotify' ? '♪ Spotify' : '📁');
+const SOURCE_LABELS = { spotify: '♪ Spotify', video: '🎬', youtube: '▶ YouTube' };
+const sourceLabel = (x) => SOURCE_LABELS[x.source] || '📁';
 const sectionDone = (sg) => sg.played >= sg.total && (sg.index === null || sg.concluded);
 
 function renderSong() {
@@ -638,6 +648,7 @@ function renderSong() {
   const on = !!sg && !state.qcm;
   $('songPanel').hidden = !on;
   $('stage').classList.toggle('withSong', on);
+  renderVideoWarning();
   if (!on) return;
   const cur = curSong(), done = sectionDone(sg);
   $('songMeta').textContent = cur
@@ -645,7 +656,7 @@ function renderSong() {
     : done ? `${sg.total} morceau${sg.total > 1 ? 'x' : ''} joué${sg.total > 1 ? 's' : ''}` : `Morceau suivant : ${sg.played + 1} / ${sg.total}`;
   $('songAnswer').textContent = cur ? cur.answer : done ? 'Manche terminée' : 'Prêt : Espace lance le morceau';
   $('songState').textContent = cur ? songStatusLabel(sg) : '';
-  $('soundHere').hidden = soundMine;
+  $('soundHere').hidden = soundMine || isVideo(cur);
   $('bReplay').disabled = !cur || state.phase === 'buzzed';
   $('bNextSection').hidden = !done;
   $('bNextSection').disabled = state.currentSection >= state.sections.length - 1;
@@ -674,10 +685,31 @@ function renderSongProgress() {
   const cur = curSong() || (qx ? state.song?.songs[state.qcm.index] : null);
   if (!cur) { $(bar).style.width = '0%'; $(time).textContent = ''; $(err).textContent = ''; return; }
   const len = cur.end - cur.start;
+  if (isVideo(cur)) {
+    // Position et erreur relayées par le Grand écran qui lit, seulement si elles portent sur ce passage.
+    const mine = !!curSong() && video.key === songKey();
+    const vat = mine && video.pos !== null ? Math.min(Math.max(video.pos - cur.start, 0), len) : 0;
+    $(bar).style.width = `${(vat / len) * 100}%`;
+    $(time).textContent = `${fmtTime(vat)} / ${fmtTime(len)} du passage`;
+    $(err).textContent = mine && video.error ? `Lecture impossible : ${video.error}` : '';
+    return;
+  }
   const at = curSong() && posKey === songKey() && pos !== null ? Math.min(Math.max(pos - cur.start, 0), len) : 0;
   $(bar).style.width = soundMine ? `${(at / len) * 100}%` : '0%';
   $(time).textContent = soundMine ? `${fmtTime(at)} / ${fmtTime(len)} du passage` : 'Le son sort sur une autre Régie';
   $(err).textContent = soundMine && curSong() ? songError : '';
+}
+// Avertissement au-dessus du bloc du morceau quand le morceau en cours (ou le suivant, si aucun n’est en cours) est vidéo.
+function renderVideoWarning() {
+  const sg = state.song, box = $('videoWarning');
+  let target = null;
+  if (sg && !state.qcm) {
+    const cur = curSong();
+    target = cur && (!sg.concluded || sg.audible) ? cur : sg.songs[sg.played] || null;
+  }
+  const msg = VideoView.hostWarning({ isVideo: isVideo(target), stage: state.stage, reader: video.reader, unlocked: video.unlocked });
+  box.hidden = !msg;
+  box.textContent = msg || '';
 }
 // Libellé de Espace pendant une manche avec morceaux (inchangé dans une manche libre).
 function renderOpenButton() {
