@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buzzer : création</title>
+<style>
+  :root {
+    --bg: #eef0f7; --panel: #ffffff; --ink: #16204a; --muted: #5b6386; --line: #d3d7e8;
+    --red: #d7263d; --gold: #f2b705; --green: #1f9d63; --orange: #c46a00; --soft: #f5f6fb;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e1430; --panel: #161e44; --ink: #eef0f7; --muted: #98a0c4; --line: #2b3360; --orange: #f0a347; --soft: #1b2452; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif; font-size: 17px; }
+  /* Tient dans la fenêtre : chaque colonne défile seule si besoin. */
+  .wrap { height: 100vh; display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+  header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  #title { font-size: 1.6rem; font-weight: 800; margin: 0 auto 0 0; overflow-wrap: anywhere; }
+  #nameInput { font: inherit; font-size: 1.4rem; font-weight: 800; padding: 4px 8px; border: 2px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); margin-right: auto; width: min(100%, 26ch); }
+  a.btn, button { font: inherit; font-size: .95rem; font-weight: 700; padding: 7px 12px; border-radius: 10px; border: 2px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; text-decoration: none; white-space: nowrap; }
+  .primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .danger { color: var(--red); }
+  .ghost { border-style: dashed; color: var(--muted); background: transparent; width: 100%; }
+  .icon { padding: 2px 7px; font-size: .85rem; }
+  button:disabled { opacity: .35; cursor: default; }
+  button:focus-visible, a.btn:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid var(--gold); outline-offset: 1px; }
+  #msg { margin: 0; max-height: 22vh; overflow-y: auto; flex: none; padding: 8px 12px; border-radius: 10px; background: var(--panel); border: 2px solid var(--line); }
+  #msg:empty { display: none; }
+  #msg.err { border-color: var(--red); color: var(--red); }
+  #msg.ok { border-color: var(--green); }
+  #msg.warn { border-color: var(--orange); }
+  #msg ul { margin: 4px 0 0; padding-left: 1.2em; }
+
+  .cols { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 12px; }
+  .col { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 12px; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  .label { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+  ol.items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  ol.items li { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border: 2px solid var(--line); border-radius: 10px; cursor: pointer; background: var(--panel); }
+  ol.items li.on { border-color: var(--ink); background: var(--soft); }
+  ol.items li.over { border-style: dashed; border-color: var(--gold); }
+  ol.items li .grip { cursor: grab; color: var(--muted); user-select: none; }
+  ol.items li .txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  ol.items li .tag { font-size: .75rem; color: var(--muted); text-transform: uppercase; white-space: nowrap; }
+  ol.items li .warn { color: var(--orange); font-weight: 800; }
+  ol.items li .ok { color: var(--green); font-weight: 800; white-space: nowrap; }
+  .moves { display: flex; gap: 2px; }
+
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  input[type=text], textarea, select { font: inherit; padding: 6px 8px; border: 2px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
+  input.missing, textarea.missing { border-color: var(--orange); }
+  #secName { font-size: 1.3rem; font-weight: 800; flex: 1; min-width: 12ch; }
+  textarea { width: 100%; resize: vertical; min-height: 3.2em; }
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .choice { display: flex; align-items: center; gap: 6px; border: 2px solid var(--line); border-radius: 10px; padding: 4px; }
+  .choice.missing { border-color: var(--orange); }
+  .choice.good { border-color: var(--green); }
+  .choice input { flex: 1; min-width: 0; border: 0; padding: 6px; }
+  .choice .letter { flex: none; width: 38px; height: 38px; border-radius: 8px; border: 0; color: #fff; font-weight: 800; font-size: 1.1rem; padding: 0; }
+  .choice[data-l="A"] .letter { background: #d7263d; } .choice[data-l="B"] .letter { background: #1f6fd1; }
+  .choice[data-l="C"] .letter { background: #c98a00; } .choice[data-l="D"] .letter { background: #1f9d63; }
+  .choice .mark { color: var(--green); font-weight: 800; width: 1.2em; text-align: center; }
+  .hint { color: var(--muted); font-size: .9rem; margin: 0; }
+  .todo { color: var(--orange); font-size: .9rem; margin: 0; }
+  .empty { color: var(--muted); text-align: center; margin: 30px 0; }
+  [hidden] { display: none !important; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } .wrap { height: auto; } .split { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="title" hidden></h1>
+    <input id="nameInput" type="text" maxlength="60" placeholder="Nom de la nouvelle partie" aria-label="Nom de la partie" hidden>
+    <a class="btn" id="back">← Parties</a>
+    <button id="saveAs">Enregistrer sous…</button>
+    <button id="save" class="primary">Enregistrer</button>
+  </header>
+  <div id="msg" role="status"></div>
+
+  <div class="cols">
+    <section class="col" aria-label="Manches">
+      <div class="label">Manches</div>
+      <ol class="items" id="sections"></ol>
+      <button class="ghost" id="addSection">+ Manche</button>
+    </section>
+
+    <section class="col" id="editor" aria-label="Manche sélectionnée">
+      <p class="empty" id="noSection">Ajoutez une première manche avec « + Manche ».</p>
+      <div id="sectionEditor" hidden>
+        <div class="row">
+          <input type="text" id="secName" maxlength="60" aria-label="Nom de la manche" placeholder="Nom de la manche">
+          <select id="secType" aria-label="Type de manche">
+            <option value="buzzer">Buzzer</option>
+            <option value="qcm">QCM</option>
+          </select>
+          <button class="danger" id="delSection">Supprimer la manche</button>
+        </div>
+        <p class="hint" id="buzzerHint">Manche buzzer : les morceaux se lancent pendant la soirée avec Espace, rien d’autre à préparer.</p>
+
+        <div id="qcmEditor" hidden>
+          <div class="split" style="margin-top:12px">
+            <div>
+              <div class="label">Questions</div>
+              <ol class="items" id="questions" style="margin-top:6px"></ol>
+              <button class="ghost" id="addQuestion" style="margin-top:6px">+ Question</button>
+            </div>
+            <div id="questionEditor" hidden>
+              <div class="row"><div class="label" id="qLabel"></div><button class="danger icon" id="delQuestion" style="margin-left:auto">Supprimer la question</button></div>
+              <textarea id="qText" placeholder="Texte de la question (facultatif s’il y a une image)" aria-label="Texte de la question" style="margin-top:6px"></textarea>
+              <div id="imageSlot"></div>
+              <p class="hint" style="margin:8px 0 6px">Propositions — cliquez sur la lettre de la bonne réponse :</p>
+              <div class="choices" id="choices"></div>
+              <p class="todo" id="qTodo"></p>
+              <div id="previewSlot"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const key = params.get('key') || '';
+const enc = encodeURIComponent;
+const LETTERS = ['A', 'B', 'C', 'D'];
+$('back').href = `/parties?key=${enc(key)}`;
+
+// ----- État de la page -----
+let name = params.get('partie');           // nom enregistré (null : nouvelle partie jamais enregistrée)
+let sections = [];
+let selSection = -1, selQuestion = -1;
+let dirty = false;
+
+const newQuestion = () => ({ text: '', image: null, choices: { A: '', B: '', C: '', D: '' }, answer: null });
+const touch = () => { dirty = true; };
+addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+async function api(method, route, body) {
+  const res = await fetch(`/api${route}`, {
+    method,
+    headers: { 'x-host-key': key, ...(body ? { 'content-type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({ error: 'Réponse illisible du serveur.' }));
+  if (!res.ok) throw Object.assign(new Error(data.error || `Erreur ${res.status}`), { status: res.status });
+  return data;
+}
+
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+function say(kind, text, list = []) {
+  const m = $('msg'); m.className = kind; m.innerHTML = '';
+  m.append(text);
+  if (list.length) { const ul = el('ul'); for (const x of list) ul.append(el('li', null, x)); m.append(ul); }
+}
+
+// ----- Ce qui manque (affichage seulement : le serveur refait la vérification) -----
+function questionTodo(q) {
+  const out = [];
+  if (!q.text.trim() && !q.image) out.push('texte ou image');
+  for (const l of LETTERS) if (!q.choices[l].trim()) out.push(`proposition ${l}`);
+  if (!q.answer) out.push('bonne réponse');
+  return out;
+}
+const sectionIncomplete = (s) => !s.name.trim() || (s.type === 'qcm' && (!s.questions.length || s.questions.some((q) => questionTodo(q).length)));
+
+// ----- Réordonner : glisser-déposer et boutons ↑ ↓ -----
+function move(list, from, to) { const [x] = list.splice(from, 1); list.splice(to, 0, x); }
+function makeSortable(li, index, list, onMoved) {
+  li.draggable = true;
+  li.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', String(index)); e.dataTransfer.effectAllowed = 'move'; });
+  li.addEventListener('dragover', (e) => { e.preventDefault(); li.classList.add('over'); });
+  li.addEventListener('dragleave', () => li.classList.remove('over'));
+  li.addEventListener('drop', (e) => {
+    e.preventDefault(); li.classList.remove('over');
+    const from = Number(e.dataTransfer.getData('text/plain'));
+    if (Number.isInteger(from) && from !== index) { move(list, from, index); onMoved(from, index); }
+  });
+}
+// Garde la sélection sur le même élément après un déplacement.
+const follow = (sel, from, to) => (sel === from ? to : from < sel && to >= sel ? sel - 1 : from > sel && to <= sel ? sel + 1 : sel);
+function moveButtons(index, list, onMoved) {
+  const box = el('span', 'moves');
+  for (const [label, delta, title] of [['↑', -1, 'Monter'], ['↓', 1, 'Descendre']]) {
+    const b = el('button', 'icon', label);
+    b.title = title; b.setAttribute('aria-label', title);
+    b.disabled = index + delta < 0 || index + delta >= list.length;
+    b.onclick = (e) => { e.stopPropagation(); move(list, index, index + delta); onMoved(index, index + delta); };
+    box.append(b);
+  }
+  return box;
+}
+
+// ----- Rendu -----
+function renderSections() {
+  const ol = $('sections'); ol.innerHTML = '';
+  sections.forEach((s, i) => {
+    const li = el('li', i === selSection ? 'on' : '');
+    li.append(el('span', 'grip', '⋮⋮'), el('span', 'txt', s.name || 'Sans nom'));
+    li.append(el('span', 'tag', s.type === 'qcm' ? `QCM · ${s.questions.length}` : 'buzzer'));
+    if (sectionIncomplete(s)) { const w = el('span', 'warn', '⚠'); w.title = 'À compléter'; li.append(w); }
+    li.append(moveButtons(i, sections, (from, to) => { selSection = follow(selSection, from, to); touch(); render(); }));
+    li.onclick = () => { selSection = i; selQuestion = s.questions.length ? 0 : -1; render(); };
+    makeSortable(li, i, sections, (from, to) => { selSection = follow(selSection, from, to); touch(); render(); });
+    ol.append(li);
+  });
+}
+
+function renderQuestions(s) {
+  const ol = $('questions'); ol.innerHTML = '';
+  s.questions.forEach((q, i) => {
+    const li = el('li', i === selQuestion ? 'on' : '');
+    li.append(el('span', 'grip', '⋮⋮'), el('span', 'txt', `${i + 1}. ${q.text.trim() || (q.image ? `🖼 ${q.image}` : 'Question vide')}`));
+    li.append(questionTodo(q).length ? Object.assign(el('span', 'warn', '⚠'), { title: 'À compléter' }) : el('span', 'ok', `${q.answer} ✓`));
+    li.append(moveButtons(i, s.questions, (from, to) => { selQuestion = follow(selQuestion, from, to); touch(); render(); }));
+    li.onclick = () => { selQuestion = i; render(); };
+    makeSortable(li, i, s.questions, (from, to) => { selQuestion = follow(selQuestion, from, to); touch(); render(); });
+    ol.append(li);
+  });
+}
+
+function renderQuestion(q) {
+  $('qLabel').textContent = `Question ${selQuestion + 1}`;
+  if (document.activeElement !== $('qText')) $('qText').value = q.text;
+  $('qText').classList.toggle('missing', !q.text.trim() && !q.image);
+  const box = $('choices');
+  // Champs reconstruits seulement si on change de question : la frappe garde son curseur.
+  if (box.dataset.for !== `${selSection}:${selQuestion}`) {
+    box.dataset.for = `${selSection}:${selQuestion}`;
+    box.innerHTML = '';
+    for (const l of LETTERS) {
+      const c = el('div', 'choice'); c.dataset.l = l;
+      const letter = el('button', 'letter', l);
+      letter.title = `${l} est la bonne réponse`;
+      letter.onclick = () => { q.answer = l; touch(); render(); };
+      const input = el('input');
+      input.type = 'text'; input.maxLength = 120; input.placeholder = `Proposition ${l}`; input.setAttribute('aria-label', `Proposition ${l}`);
+      input.oninput = () => { q.choices[l] = input.value; touch(); renderLight(); };
+      c.append(letter, input, el('span', 'mark'));
+      box.append(c);
+    }
+  }
+  for (const c of box.children) {
+    const l = c.dataset.l;
+    const input = c.querySelector('input');
+    if (document.activeElement !== input) input.value = q.choices[l];
+    c.classList.toggle('missing', !q.choices[l].trim());
+    c.classList.toggle('good', q.answer === l);
+    c.querySelector('.mark').textContent = q.answer === l ? '✓' : '';
+  }
+  const todo = questionTodo(q);
+  $('qTodo').textContent = todo.length ? `À compléter : ${todo.join(', ')}.` : '';
+  if (window.renderExtras) window.renderExtras(q);
+}
+
+function render() {
+  renderSections();
+  const s = sections[selSection];
+  $('noSection').hidden = !!s;
+  $('sectionEditor').hidden = !s;
+  if (!s) return;
+  if (document.activeElement !== $('secName')) $('secName').value = s.name;
+  $('secName').classList.toggle('missing', !s.name.trim());
+  $('secType').value = s.type;
+  $('buzzerHint').hidden = s.type !== 'buzzer';
+  $('qcmEditor').hidden = s.type !== 'qcm';
+  if (s.type !== 'qcm') return;
+  renderQuestions(s);
+  const q = s.questions[selQuestion];
+  $('questionEditor').hidden = !q;
+  if (q) renderQuestion(q);
+}
+// Pendant la frappe : listes et indicateurs à jour, sans reconstruire les champs.
+const renderLight = render;
+
+// ----- Actions -----
+$('addSection').onclick = () => {
+  sections.push({ name: `Manche ${sections.length + 1}`, type: 'buzzer', questions: [] });
+  selSection = sections.length - 1; selQuestion = -1; touch(); render();
+  $('secName').focus(); $('secName').select();
+};
+$('secName').oninput = () => { sections[selSection].name = $('secName').value; touch(); render(); };
+$('secType').onchange = () => {
+  const s = sections[selSection];
+  if (s.type === 'qcm' && s.questions.length && !confirm(`Passer « ${s.name} » en manche buzzer supprimera ses ${s.questions.length} question(s). Continuer ?`)) {
+    $('secType').value = s.type; return;
+  }
+  s.type = $('secType').value;
+  if (s.type === 'buzzer') s.questions = [];
+  if (s.type === 'qcm' && !s.questions.length) { s.questions.push(newQuestion()); selQuestion = 0; }
+  touch(); render();
+};
+$('delSection').onclick = () => {
+  const s = sections[selSection];
+  if (!confirm(`Supprimer la manche « ${s.name || 'sans nom'} »${s.questions.length ? ` et ses ${s.questions.length} question(s)` : ''} ?`)) return;
+  sections.splice(selSection, 1);
+  selSection = Math.min(selSection, sections.length - 1);
+  selQuestion = sections[selSection]?.questions.length ? 0 : -1;
+  touch(); render();
+};
+$('addQuestion').onclick = () => {
+  const s = sections[selSection];
+  s.questions.push(newQuestion());
+  selQuestion = s.questions.length - 1; touch(); render();
+  $('qText').focus();
+};
+$('delQuestion').onclick = () => {
+  const s = sections[selSection];
+  if (!confirm(`Supprimer la question ${selQuestion + 1} ?`)) return;
+  s.questions.splice(selQuestion, 1);
+  selQuestion = Math.min(selQuestion, s.questions.length - 1);
+  touch(); render();
+};
+$('qText').oninput = () => { sections[selSection].questions[selQuestion].text = $('qText').value; touch(); renderLight(); };
+
+// ----- Enregistrer -----
+function showTitle() {
+  $('title').hidden = !name; $('nameInput').hidden = !!name;
+  $('title').textContent = name || '';
+  document.title = `Buzzer : ${name || 'nouvelle partie'}`;
+}
+
+async function saveTo(target, overwrite) {
+  try {
+    const r = await api('PUT', `/parties/${enc(target)}`, { sections, overwrite });
+    name = r.name; dirty = false;
+    history.replaceState(null, '', `/creation?key=${enc(key)}&partie=${enc(name)}`);
+    showTitle();
+    const notes = [...r.warnings];
+    if (r.applied) say(notes.length ? 'warn' : 'ok', `« ${name} » enregistrée et appliquée au jeu en cours.`, notes);
+    else if (r.problems.length) say('warn', `« ${name} » enregistrée, mais incomplète : elle ne pourra pas être jouée tant que ces points ne sont pas réglés.`, [...r.problems, ...notes]);
+    else say(notes.length ? 'warn' : 'ok', `« ${name} » enregistrée.`, notes);
+  } catch (e) {
+    say('err', e.message);
+  }
+}
+
+$('save').onclick = () => {
+  if (name) return saveTo(name, true);
+  const typed = $('nameInput').value.trim();
+  if (!typed) { say('err', 'Donnez un nom à la partie avant de l’enregistrer.'); $('nameInput').focus(); return; }
+  saveTo(typed, false);
+};
+$('saveAs').onclick = () => {
+  const typed = prompt('Enregistrer sous le nom :', name ? `${name} (copie)` : $('nameInput').value.trim());
+  if (typed && typed.trim()) saveTo(typed.trim(), false);
+};
+
+// ----- Chargement -----
+async function load() {
+  showTitle();
+  if (!name) { render(); $('nameInput').focus(); return; }
+  try {
+    const r = await api('GET', `/parties/${enc(name)}`);
+    name = r.name; sections = r.sections; showTitle();
+    selSection = sections.length ? 0 : -1;
+    selQuestion = sections[0]?.questions.length ? 0 : -1;
+    if (r.problems.length) say('warn', 'Cette partie est incomplète :', r.problems);
+    render();
+  } catch (e) {
+    say('err', e.status === 404 ? `La partie « ${name} » est introuvable.` : e.message);
+  }
+}
+load();
+</script>
+</body>
+</html>
