@@ -396,12 +396,20 @@
     frame.style.pointerEvents = 'none';            // aucun clic ne parvient à l’interface de YouTube
     frame.style.position = 'relative';
     frame.style.overflow = 'hidden';
+    frame.style.background = '#000';
+    frame.style.containerType = 'size';            // cqw / cqh : la taille du cadre, quelle que soit sa forme
     // Avec controls: 0, YouTube affiche quand même son bandeau de titre (chaîne et titre) en haut et son logo en bas.
-    // L’iframe est plus haute que le cadre (150 %) et remontée d’un quart : ces bandeaux tombent hors du cadre visible.
-    // Plus haute que 16:9, elle place l’image (16:9) en son milieu, c’est-à-dire exactement dans la partie visible.
+    // `picture` : la plus grande boîte 16:9 qui tient dans le cadre, centrée (bandes noires autour), comme object-fit: contain.
+    // `crop` : l’iframe, 150 % de la hauteur de cette boîte et remontée d’un quart ; ces bandeaux tombent hors de la boîte.
+    // L’iframe fait toujours 16:9 × 1,5 : YouTube y place l’image 16:9 en son milieu, c’est-à-dire exactement dans la boîte.
+    const picture = document.createElement('div');
+    picture.style.cssText = 'position:absolute; inset:0; margin:auto; overflow:hidden;'
+      + ' width:100%; height:100%;'                                   // repli sans unités cqw / cqh
+      + ' width:min(100cqw, 100cqh * 16 / 9); height:min(100cqh, 100cqw * 9 / 16)';
     const crop = document.createElement('div');
     crop.style.cssText = 'position:absolute; left:0; top:-25%; width:100%; height:150%';
-    frame.append(crop);
+    picture.append(crop);
+    frame.append(picture);
     opts.container.append(frame);
     let errorFn = () => {};
     let yt = null;              // YT.Player prêt
