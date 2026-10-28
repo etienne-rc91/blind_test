@@ -15,6 +15,7 @@ const { saveStream } = require('./lib/upload');
 const { createPartiesStore, cleanPartieName } = require('./lib/parties');
 const { checkLiveEdit } = require('./lib/live-edit');
 const { createSpotify, UNREACHABLE } = require('./lib/spotify');
+const { isLoopback, createScreenRegistry } = require('./lib/screens');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST_KEY = process.env.HOST_KEY || crypto.randomBytes(3).toString('hex');
@@ -121,12 +122,35 @@ function prefetchCover() {
     .then((t) => { if (t) broadcast(); })
     .catch((e) => console.warn('  Pochette Spotify indisponible :', e.message));
 }
+// Grands écrans : un seul lit les vidéos (le dernier ouvert depuis ce PC). Son dernier statut est relayé aux Régies.
+const screens = createScreenRegistry();
+const NO_VIDEO = { unlocked: false, key: null, pos: null, error: null };
+let videoStatus = NO_VIDEO;
+const emitVideo = () => io.to('hosts').emit('video', { reader: screens.reader() !== null, ...videoStatus });
+// Le lecteur change (ou disparaît) : l’ancien statut ne le concerne plus.
+function readerChanged() {
+  videoStatus = NO_VIDEO;
+  broadcast();
+  emitVideo();
+}
+const MAX_ERROR = 300;
+const cleanVideoStatus = (p) => {
+  if (!p || typeof p !== 'object') return null;
+  const { unlocked, key, pos, error } = p;
+  if (typeof unlocked !== 'boolean') return null;
+  if (key !== null && typeof key !== 'string') return null;
+  if (pos !== null && !(typeof pos === 'number' && Number.isFinite(pos))) return null;
+  if (error !== null && typeof error !== 'string') return null;
+  return { unlocked, key: key === null ? null : key.slice(0, MAX_ERROR), pos, error: error === null ? null : error.slice(0, MAX_ERROR) };
+};
+
 // Chaque rôle reçoit son propre état : le Grand écran et les Buzzers ne voient jamais les secrets de la Régie.
 function broadcast() {
   io.to('hosts').emit('state', game.publicState({ role: 'host' }));
-  io.to('screens').emit('state', game.publicState({ role: 'screen' }));
+  const reader = screens.reader();
   for (const sock of io.sockets.sockets.values()) {
-    if (sock.data.role === 'player') sock.emit('state', game.publicState({ role: 'player', teamId: sock.data.teamId }));
+    if (sock.data.role === 'screen') sock.emit('state', game.publicState({ role: 'screen', reader: sock.id === reader }));
+    else if (sock.data.role === 'player') sock.emit('state', game.publicState({ role: 'player', teamId: sock.data.teamId }));
   }
   scheduleSave();
 }
@@ -376,14 +400,18 @@ io.on('connection', (socket) => {
   socket.data.role = isHost ? 'host' : role === 'screen' ? 'screen' : 'player';
   socket.data.teamId = null;
 
-  socket.emit('state', game.publicState({ role: socket.data.role }));   // avant 'info' : la Régie connaît déjà joinIp
+  const before = screens.reader();
+  if (socket.data.role === 'screen') screens.add(socket.id, { loopback: isLoopback(socket.handshake.address) });
+  socket.emit('state', game.publicState({ role: socket.data.role, reader: socket.data.role === 'screen' && socket.id === screens.reader() }));   // avant 'info' : la Régie connaît déjà joinIp
   if (socket.data.role !== 'player') {
     socket.join(socket.data.role === 'host' ? 'hosts' : 'screens');
     socket.emit('info', { ips: lanAddresses(), port: PORT });
     if (isHost) {
       if (!soundOwner || !io.sockets.sockets.has(soundOwner)) soundOwner = socket.id;
       emitSound();
+      socket.emit('video', { reader: screens.reader() !== null, ...videoStatus });
     }
+    if (screens.reader() !== before) readerChanged();
   }
 
   // --- Joueurs ---
@@ -429,7 +457,21 @@ io.on('connection', (socket) => {
   on('host:ended', (payload) => {
     if (!isHost) return;
     const seq = payload && payload.seq;
-    if (Number.isInteger(seq) && game.songEnded(seq)) broadcast();
+    if (Number.isInteger(seq) && game.songEnded(seq, 'host')) broadcast();
+  });
+
+  // Le Grand écran qui lit signale la fin de la vidéo et son état ; les autres Grands écrans sont ignorés.
+  on('screen:ended', (payload) => {
+    if (socket.id !== screens.reader()) return;
+    const seq = payload && payload.seq;
+    if (Number.isInteger(seq) && game.songEnded(seq, 'screen')) broadcast();
+  });
+  on('screen:video', (payload) => {
+    if (socket.id !== screens.reader()) return;
+    const status = cleanVideoStatus(payload);
+    if (!status) return;
+    videoStatus = status;
+    emitVideo();
   });
 
   on('host:sound-here', () => {
@@ -438,6 +480,9 @@ io.on('connection', (socket) => {
 
   on('disconnect', () => {
     game.leave(socket.id);
+    const reading = screens.reader();
+    screens.remove(socket.id);
+    if (screens.reader() !== reading) readerChanged();
     if (isHost && soundOwner === socket.id) {
       const next = hostSockets().find((s) => s.id !== socket.id);   // le plus ancien hôte restant
       soundOwner = next ? next.id : null;

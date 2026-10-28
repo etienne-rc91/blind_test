@@ -170,7 +170,31 @@ test('renaming a qcm manche to its neighbour name is refused, server keeps runni
   assert.equal((await api('GET', '/api/parties')).status, 200);
 });
 
-// Un téléphone minimal (protocole socket.io texte via le WebSocket intégré à Node) qui rejoint une équipe.
+// Un client minimal (protocole socket.io texte via le WebSocket intégré à Node) : se connecte avec `auth`,
+// garde les événements reçus et sait en émettre.
+function connect(auth) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`${base.replace('http', 'ws')}/socket.io/?EIO=4&transport=websocket`);
+    const events = [];
+    const client = {
+      ws,
+      events,
+      emit: (name, ...args) => ws.send(`42${JSON.stringify([name, ...args])}`),
+      last: (name) => events.findLast((e) => e[0] === name)?.[1],
+      close: () => ws.close(),
+    };
+    ws.onmessage = (m) => {
+      const d = String(m.data);
+      if (d === '2') ws.send('3');
+      else if (d.startsWith('0')) ws.send(`40${JSON.stringify(auth)}`);
+      else if (d.startsWith('40')) resolve(client);
+      else if (d.startsWith('42')) events.push(JSON.parse(d.slice(2)));
+    };
+    ws.onerror = reject;
+  });
+}
+
+// Un téléphone minimal qui rejoint une équipe.
 function joinTeam(name) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`${base.replace('http', 'ws')}/socket.io/?EIO=4&transport=websocket`);
@@ -184,6 +208,8 @@ function joinTeam(name) {
     ws.onerror = reject;
   });
 }
+
+const pause = (ms = 150) => new Promise((r) => setTimeout(r, ms));
 
 test('play asks for confirmation when teams exist', async () => {
   await api('PUT', '/api/parties/Confirm', { sections: SECTIONS, overwrite: false });
@@ -290,4 +316,54 @@ test('play warns when a qcm extract uses spotify and spotify is not connected', 
   assert.equal(saved.status, 200);
   const r = await json(await api('POST', '/api/parties/ExtraitSpotify/play', { confirm: true }));
   assert.deepEqual(r, { status: 200, body: { ok: true, warnings: ['Cette partie contient des morceaux Spotify, mais Spotify n’est pas connecté.'] } });
+});
+
+test('only the loopback screen reads', async () => {
+  fs.mkdirSync(DIRS.videos, { recursive: true });
+  fs.writeFileSync(path.join(DIRS.videos, 'clip.mp4'), 'x');
+  const sections = [{ name: 'Clips', type: 'buzzer', questions: [], songs: [{ source: 'video', ref: 'clip.mp4', start: 0, end: 20, answer: 'Thriller' }] }];
+  await api('PUT', '/api/parties/Clips', { sections, overwrite: false });
+  assert.equal((await api('POST', '/api/parties/Clips/play', { confirm: true })).status, 200);
+
+  const host = await connect({ role: 'host', key: KEY });
+  const screen = await connect({ role: 'screen' });
+  await pause();
+  assert.equal(screen.last('state').reader, true);
+  assert.deepEqual(host.last('video'), { reader: true, unlocked: false, key: null, pos: null, error: null });
+
+  host.emit('host:open');
+  await pause();
+  const video = screen.last('state').song.video;
+  assert.equal(video.media.ref, 'clip.mp4');
+  assert.equal(video.seq, 1);
+
+  // La Régie ne termine pas un passage vidéo ; hors étape Jeu, le Grand écran non plus.
+  host.emit('host:ended', { seq: 1 });
+  screen.emit('screen:ended', { seq: 1 });
+  await pause();
+  assert.equal(screen.last('state').song.video.audible, true);
+  host.emit('host:stage', { stage: 'play' });
+  await pause();
+  host.emit('host:ended', { seq: 1 });
+  await pause();
+  assert.equal(screen.last('state').song.video.audible, true);
+
+  screen.emit('screen:video', { unlocked: true, key: video.key, pos: 3.5, error: null });
+  screen.emit('screen:video', { unlocked: 'oui', key: 5, pos: 'x', error: null });   // ignoré
+  await pause();
+  assert.deepEqual(host.last('video'), { reader: true, unlocked: true, key: video.key, pos: 3.5, error: null });
+
+  screen.emit('screen:ended', { seq: 1 });
+  await pause();
+  assert.equal(screen.last('state').song.video.audible, false);
+
+  // Une Régie qui arrive ensuite reçoit le dernier statut ; sans lecteur, il est remis à zéro.
+  const host2 = await connect({ role: 'host', key: KEY });
+  await pause();
+  assert.equal(host2.last('video').unlocked, true);
+  screen.close();
+  await pause();
+  assert.deepEqual(host.last('video'), { reader: false, unlocked: false, key: null, pos: null, error: null });
+  host.close();
+  host2.close();
 });
