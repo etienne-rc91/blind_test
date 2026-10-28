@@ -175,12 +175,17 @@
     }
     async function ourState() {
       if (!sdk) return null;
-      const st = await sdk.getCurrentState();
+      const st = await sdkCall(() => sdk.getCurrentState());
       return isOurs(st) ? st : null;
     }
+    // Toute commande du SDK a un délai : une panne Spotify ne doit jamais bloquer la file de la Régie.
+    const sdkCall = (fn) => withTimeout(Promise.resolve().then(fn), READY_TIMEOUT, 'Spotify ne répond pas (délai dépassé).');
+    // L’extrapolation ne compte que le temps écoulé depuis la dernière valeur brute vue en lecture :
+    // en pause, aucune base n’est gardée, sinon la reprise ajouterait toute la durée de la pause.
     function readPos(st) {
       const now = Date.now();
-      if (st.paused || !last || last.raw !== st.position) last = { raw: st.position, at: now };
+      if (st.paused) last = null;
+      else if (!last || last.raw !== st.position) last = { raw: st.position, at: now };
       const ms = st.paused ? st.position : st.position + (now - last.at);
       return Math.min(ms, st.duration || Infinity) / 1000;
     }
@@ -215,7 +220,7 @@
         for (const code of Object.keys(SDK_ERRORS)) sdk.addListener(code, (e) => fail(code, e && e.message));
         sdk.addListener('player_state_changed', (st) => {
           // Pause demandée pendant le lancement du titre : imposée dès que le titre joue.
-          if (st && !st.paused && want === 'pause' && isOurs(st)) Promise.resolve(sdk.pause()).catch(() => {});
+          if (st && !st.paused && want === 'pause' && isOurs(st)) sdkCall(() => sdk.pause()).catch(() => {});
         });
         addEventListener('pagehide', () => { if (sdk) sdk.disconnect(); });
         return sdk.connect().then((ok) => { if (!ok) fail('initialization_error'); });
@@ -258,7 +263,7 @@
       },
       load(song) {
         if (song.ref !== ref) {
-          if (started && sdk) Promise.resolve(sdk.pause()).catch(() => {});
+          if (started && sdk) sdkCall(() => sdk.pause()).catch(() => {});
           ref = song.ref; started = false; at = 0; last = null;
         }
         return whenReady().then(() => {});
@@ -266,19 +271,19 @@
       async seek(sec) {
         at = sec; last = null;
         if (!started) return;                          // pas encore lancé : play() partira de là
-        if (await ourState()) await sdk.seek(Math.round(sec * 1000));
+        if (await ourState()) await sdkCall(() => sdk.seek(Math.round(sec * 1000)));
         else started = false;                          // le titre n’est plus sur cet appareil : relancé au prochain play()
       },
       async play() {
-        want = 'play';
-        if (started && await ourState()) await sdk.resume();
+        want = 'play'; last = null;
+        if (started && await ourState()) await sdkCall(() => sdk.resume());
         else await startTrack();
-        if (want === 'pause') await sdk.pause();       // pause demandée pendant le lancement
+        if (want === 'pause') await sdkCall(() => sdk.pause());   // pause demandée pendant le lancement
       },
       pause() {
-        want = 'pause';
+        want = 'pause'; last = null;
         if (!sdk || !started) return Promise.resolve();
-        return Promise.resolve(sdk.pause()).catch(() => {});
+        return sdkCall(() => sdk.pause()).catch(() => {});
       },
       async position() {
         if (!started) return at;

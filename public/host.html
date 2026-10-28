@@ -475,10 +475,17 @@ let spotifyStatus = null;    // { configured, connected } lu sur le serveur
 let spotifyFor = null;       // manche pour laquelle l’état a été lu
 const sectionHasSpotify = () => (state?.sections[state.currentSection]?.spotifyCount || 0) > 0;
 async function spotifyToken() {
-  let res;
-  try { res = await fetch('/api/spotify/token', { headers: { 'x-host-key': key }, cache: 'no-store' }); }
-  catch { throw new Error('Serveur injoignable.'); }
-  const data = await res.json().catch(() => ({}));
+  // Délai borné (5 s) : une panne ne doit pas bloquer la file de la Régie. Un rafraîchissement lent côté serveur
+  // se termine quand même et le jeton est gardé : la demande suivante l’obtient tout de suite.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  let res, data;
+  try {
+    res = await fetch('/api/spotify/token', { headers: { 'x-host-key': key }, cache: 'no-store', signal: ctrl.signal });
+    data = await res.json().catch(() => ({}));
+  } catch {
+    throw new Error(ctrl.signal.aborted ? 'Spotify ne répond pas (délai dépassé).' : 'Serveur injoignable.');
+  } finally { clearTimeout(timer); }
   if (!res.ok || !data.accessToken) throw new Error(data.error || `Erreur ${res.status}`);
   return data.accessToken;
 }
