@@ -19,6 +19,12 @@ Une **partie** est une soirée préparée : ses manches (« Cinéma », « Anné
 - **Modifier** (ouvre la page Création), **Renommer**, **Supprimer** (la partie en cours ne peut pas être supprimée) ;
 - **+ Nouvelle partie** et **Importer un fichier CSV** (une partie préparée dans Excel).
 
+**Page Création** (« + Nouvelle partie » ou « Modifier ») :
+- à gauche les manches, à droite la manche choisie ; on réordonne manches et questions en les glissant (ou avec ↑ ↓) ;
+- pour une question QCM : le texte, l'image (« Choisir une image » la copie dans `images/` ; 10 Mo maximum, png, jpg, gif, webp ou svg), les 4 propositions, et la bonne réponse en cliquant sur sa lettre ; l'aperçu montre la question telle qu'elle apparaîtra sur le Grand écran ;
+- **Enregistrer** remplace la partie ; **Enregistrer sous…** crée une copie sous un autre nom et laisse l'originale intacte ;
+- modifier la **partie en cours** pendant la soirée s'applique tout de suite, scores gardés : corrections de texte, de propositions, d'image, ajout de manches ou de questions à la fin. Supprimer ou réordonner des manches, changer leur type, ou toucher à l'ordre des questions d'une manche QCM déjà commencée est refusé (utilisez « Enregistrer sous » pour une prochaine soirée). Changer la bonne réponse d'une question déjà révélée ne recalcule pas les points : corrigez avec +/−.
+
 Une partie **incomplète** (question sans proposition, sans bonne réponse, image introuvable, manche QCM sans question…) peut être enregistrée pour être terminée plus tard : elle est marquée « incomplète », avec ce qui manque, et ne peut pas être jouée.
 
 Pendant la soirée, « Suivante ▶ » passe à la manche suivante (les buzzers se ferment). Les points donnés vont dans la manche en cours. Sans partie choisie, la soirée se joue avec une seule manche, « Manche 1 ».

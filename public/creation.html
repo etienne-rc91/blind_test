@@ -66,6 +66,23 @@
   .hint { color: var(--muted); font-size: .9rem; margin: 0; }
   .todo { color: var(--orange); font-size: .9rem; margin: 0; }
   .empty { color: var(--muted); text-align: center; margin: 30px 0; }
+  /* Image de la question */
+  .img { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+  .img img { max-height: 64px; max-width: 120px; border-radius: 6px; background: #fff; }
+  .img .name { color: var(--muted); font-size: .9rem; overflow-wrap: anywhere; }
+  .img .err { color: var(--red); font-size: .9rem; width: 100%; }
+  /* Aperçu du Grand écran (étape « propositions affichées »), en réduit */
+  .preview { margin-top: 12px; background: #0b1029; color: #f3f4fb; border-radius: 12px; padding: 14px; aspect-ratio: 16 / 9; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+  .preview .pt { font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: #9aa2c8; font-weight: 700; }
+  .preview .ph { font-size: 1.1rem; font-weight: 800; line-height: 1; }
+  .preview .pb { flex: 1; min-height: 0; display: flex; gap: 10px; align-items: center; justify-content: center; }
+  .preview .pb img { max-height: 100%; max-width: 50%; object-fit: contain; border-radius: 6px; }
+  .preview .pq { font-size: 1.1rem; font-weight: 800; text-align: center; margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
+  .preview .pc { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .preview .pc div { background: #151c42; border-radius: 6px; padding: 4px 6px; display: flex; gap: 6px; align-items: center; font-size: .8rem; font-weight: 700; min-width: 0; }
+  .preview .pc b { flex: none; width: 1.5em; height: 1.5em; border-radius: 4px; display: grid; place-items: center; color: #fff; }
+  .preview .pc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .preview .muted { color: #59608a; font-style: italic; }
   [hidden] { display: none !important; }
   @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } .wrap { height: auto; } .split { grid-template-columns: 1fr; } }
 </style>
@@ -107,6 +124,7 @@
               <div class="label">Questions</div>
               <ol class="items" id="questions" style="margin-top:6px"></ol>
               <button class="ghost" id="addQuestion" style="margin-top:6px">+ Question</button>
+              <div id="previewSlot" style="margin-top:14px"></div>
             </div>
             <div id="questionEditor" hidden>
               <div class="row"><div class="label" id="qLabel"></div><button class="danger icon" id="delQuestion" style="margin-left:auto">Supprimer la question</button></div>
@@ -115,7 +133,6 @@
               <p class="hint" style="margin:8px 0 6px">Propositions — cliquez sur la lettre de la bonne réponse :</p>
               <div class="choices" id="choices"></div>
               <p class="todo" id="qTodo"></p>
-              <div id="previewSlot"></div>
             </div>
           </div>
         </div>
@@ -274,6 +291,7 @@ function render() {
   renderQuestions(s);
   const q = s.questions[selQuestion];
   $('questionEditor').hidden = !q;
+  $('previewSlot').hidden = !q;
   if (q) renderQuestion(q);
 }
 // Pendant la frappe : listes et indicateurs à jour, sans reconstruire les champs.
@@ -350,6 +368,70 @@ $('save').onclick = () => {
 $('saveAs').onclick = () => {
   const typed = prompt('Enregistrer sous le nom :', name ? `${name} (copie)` : $('nameInput').value.trim());
   if (typed && typed.trim()) saveTo(typed.trim(), false);
+};
+
+// ----- Image de la question : copiée dans images/ par le serveur -----
+const MAX_IMAGE = 10 * 1024 * 1024;
+const imageBox = el('div', 'img');
+const thumb = el('img'); thumb.alt = '';
+const imgName = el('span', 'name');
+const pick = el('button', '', 'Choisir une image');
+const drop = el('button', 'danger', 'Retirer');
+const imgErr = el('span', 'err');
+const file = el('input'); file.type = 'file'; file.accept = 'image/png,image/jpeg,image/gif,image/webp,image/svg+xml'; file.hidden = true;
+imageBox.append(thumb, imgName, pick, drop, file, imgErr);
+$('imageSlot').append(imageBox);
+pick.onclick = () => file.click();
+drop.onclick = () => { sections[selSection].questions[selQuestion].image = null; touch(); render(); };
+file.onchange = async () => {
+  const f = file.files[0];
+  file.value = '';
+  if (!f) return;
+  const q = sections[selSection].questions[selQuestion];   // la question visée au moment du choix
+  imgErr.textContent = '';
+  if (f.size > MAX_IMAGE) { imgErr.textContent = 'Image trop grosse (10 Mo maximum).'; return; }
+  pick.disabled = true; pick.textContent = 'Envoi…';
+  try {
+    const res = await fetch(`/api/images?filename=${enc(f.name)}`, { method: 'POST', headers: { 'x-host-key': key }, body: f });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+    q.image = data.name; touch();
+  } catch (e) {
+    imgErr.textContent = e.message;
+  } finally {
+    pick.disabled = false; render();
+  }
+};
+
+// ----- Aperçu : la question telle qu'elle apparaîtra sur le Grand écran -----
+const preview = el('div', 'preview');
+$('previewSlot').append(el('div', 'label', 'Aperçu Grand écran'), preview);
+const COLORS = { A: '#d7263d', B: '#1f6fd1', C: '#c98a00', D: '#1f9d63' };
+
+window.renderExtras = (q) => {
+  const s = sections[selSection];
+  const src = q.image ? `/images/${enc(q.image)}` : '';
+  thumb.hidden = !q.image;
+  if (q.image && thumb.getAttribute('src') !== src) thumb.src = src;
+  imgName.textContent = q.image || 'Pas d’image';
+  pick.textContent = pick.disabled ? 'Envoi…' : q.image ? 'Changer l’image' : 'Choisir une image';
+  drop.hidden = !q.image;
+
+  preview.innerHTML = '';
+  const head = el('div');
+  head.append(el('div', 'pt', `Question ${selQuestion + 1}/${s.questions.length}`), el('div', 'ph', s.name || 'Sans nom'));
+  const body = el('div', 'pb');
+  if (q.image) { const im = el('img'); im.src = src; im.alt = ''; body.append(im); }
+  if (q.text.trim()) body.append(el('p', 'pq', q.text));
+  if (!q.image && !q.text.trim()) body.append(el('p', 'pq muted', 'Texte ou image de la question'));
+  const grid = el('div', 'pc');
+  for (const l of LETTERS) {
+    const c = el('div');
+    const b = el('b', null, l); b.style.background = COLORS[l];
+    c.append(b, el('span', q.choices[l].trim() ? null : 'muted', q.choices[l].trim() || `Proposition ${l}`));
+    grid.append(c);
+  }
+  preview.append(head, body, grid);
 };
 
 // ----- Chargement -----
