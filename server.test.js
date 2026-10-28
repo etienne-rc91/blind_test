@@ -387,3 +387,35 @@ test('only the loopback screen reads', async () => {
   host.close();
   host2.close();
 });
+
+test('an older loopback screen is not the reader: its end and status are ignored', async () => {
+  fs.mkdirSync(DIRS.videos, { recursive: true });
+  fs.writeFileSync(path.join(DIRS.videos, 'clip.mp4'), 'x');
+  const sections = [{ name: 'Clips', type: 'buzzer', questions: [], songs: [{ source: 'video', ref: 'clip.mp4', start: 0, end: 20, answer: 'Thriller' }] }];
+  await api('PUT', '/api/parties/Clips2', { sections, overwrite: false });
+  assert.equal((await api('POST', '/api/parties/Clips2/play', { confirm: true })).status, 200);
+
+  const host = await connect({ role: 'host', key: KEY });
+  const older = await connect({ role: 'screen' });
+  await pause();
+  const newer = await connect({ role: 'screen' });
+  await pause();
+  assert.equal(older.last('state').reader, false);
+  assert.equal(newer.last('state').reader, true);
+  assert.deepEqual(host.last('video'), { reader: true, screens: 2, unlocked: false, key: null, pos: null, error: null });
+
+  host.emit('host:stage', { stage: 'play' });
+  host.emit('host:open');
+  await pause();
+  const video = newer.last('state').song.video;
+  older.emit('screen:ended', { seq: video.seq });
+  older.emit('screen:video', { unlocked: true, key: video.key, pos: 2, error: null });
+  await pause();
+  assert.equal(newer.last('state').song.video.audible, true);
+  assert.deepEqual(host.last('video'), { reader: true, screens: 2, unlocked: false, key: null, pos: null, error: null });
+
+  newer.emit('screen:ended', { seq: video.seq });         // le lecteur, lui, termine le passage
+  await pause();
+  assert.equal(newer.last('state').song.video.audible, false);
+  for (const c of [older, newer, host]) c.close();
+});
