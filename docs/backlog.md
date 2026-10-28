@@ -5,8 +5,23 @@ Fonctionnalités prévues mais pas encore conçues. Chacune passe par une discus
 ## En cours de conception
 
 - **Grand écran, étapes, manches et QCM** : voir `docs/superpowers/specs/2026-10-28-grand-ecran-manches-qcm-design.md`.
+- **Musique pilotée par l’app (fichiers locaux et Spotify)** : voir `docs/superpowers/specs/2026-10-28-musique-design.md`.
 
 ## À venir
+
+### Vidéo YouTube dans une manche buzzer
+
+Un morceau d’une manche buzzer peut être une vidéo YouTube, en plus des fichiers et de Spotify (même déroulé : passage début/fin, pause au buzz, reprise sur M, Rejouer l’extrait).
+
+- Exige internet : même exception que Spotify, limitée aux morceaux YouTube.
+- À préciser : où s’affiche la vidéo (Grand écran ? image masquée pendant le passage, son seul ?), publicités en début de vidéo, titre et suggestions de YouTube qui peuvent donner la réponse, ce que voit la Régie.
+
+### Extrait musical ou vidéo dans une question QCM
+
+Une question QCM peut avoir un média : extrait audio (fichier, Spotify) ou vidéo YouTube, joué sur le Grand écran.
+
+- À préciser : à quelle étape le média se joue (avec la question, avec les propositions, pendant le compte à rebours ?), s’il boucle, s’il s’arrête à la fin du compte à rebours, réécoute.
+- S’appuie sur les sources de musique de la conception « Musique » et sur la vidéo YouTube ci-dessus.
 
 ### Page « Création »
 
