@@ -127,7 +127,9 @@ function prefetchCover() {
 const screens = createScreenRegistry();
 const NO_VIDEO = { unlocked: false, key: null, pos: null, error: null };
 let videoStatus = NO_VIDEO;
-const emitVideo = () => io.to('hosts').emit('video', { reader: screens.reader() !== null, ...videoStatus });
+// screens : tous les Grands écrans connectés, pour signaler à la Régie celui qui n’est pas ouvert à l’adresse 127.0.0.1.
+const videoEvent = () => ({ reader: screens.reader() !== null, screens: screens.count(), ...videoStatus });
+const emitVideo = () => io.to('hosts').emit('video', videoEvent());
 // Le lecteur change (ou disparaît) : l’ancien statut ne le concerne plus.
 function readerChanged() {
   videoStatus = NO_VIDEO;
@@ -425,9 +427,10 @@ io.on('connection', (socket) => {
     if (isHost) {
       if (!soundOwner || !io.sockets.sockets.has(soundOwner)) soundOwner = socket.id;
       emitSound();
-      socket.emit('video', { reader: screens.reader() !== null, ...videoStatus });
+      socket.emit('video', videoEvent());
     }
     if (screens.reader() !== before) readerChanged();
+    else if (socket.data.role === 'screen') emitVideo();   // un Grand écran de plus, qui ne lit pas
   }
 
   // --- Joueurs ---
@@ -499,6 +502,7 @@ io.on('connection', (socket) => {
     const reading = screens.reader();
     screens.remove(socket.id);
     if (screens.reader() !== reading) readerChanged();
+    else if (socket.data.role === 'screen') emitVideo();
     if (isHost && soundOwner === socket.id) {
       const next = hostSockets().find((s) => s.id !== socket.id);   // le plus ancien hôte restant
       soundOwner = next ? next.id : null;

@@ -392,7 +392,7 @@ let muteGen = 0;             // incrémenté à chaque coupure immédiate : un p
 
 // Passage vidéo : lu par le Grand écran, jamais par la Régie. Son statut arrive relayé par le serveur (événement video).
 const isVideo = (x) => !!x && (x.source === 'video' || x.source === 'youtube');
-let video = { reader: false, unlocked: false, key: null, pos: null, error: null };
+let video = { reader: false, screens: 0, unlocked: false, key: null, pos: null, error: null };
 socket.on('video', (v) => { video = v; if (state) { renderVideoWarning(); renderSongProgress(); } });
 
 const curSong = () => (state?.song && state.song.index !== null ? state.song.songs[state.song.index] : null);
@@ -709,7 +709,7 @@ function renderVideoWarning() {
     const cur = curSong();
     target = cur && (!sg.concluded || sg.audible) ? cur : sg.songs[sg.played] || null;
   }
-  const msg = VideoView.hostWarning({ isVideo: isVideo(target), stage: state.stage, reader: video.reader, unlocked: video.unlocked });
+  const msg = VideoView.hostWarning({ isVideo: isVideo(target), stage: state.stage, reader: video.reader, screens: video.screens, port, unlocked: video.unlocked });
   box.hidden = !msg;
   box.textContent = msg || '';
 }

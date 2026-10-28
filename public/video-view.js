@@ -27,9 +27,11 @@
   }
 
   // Avertissement de la Régie pour un passage vidéo (null = rien à signaler).
-  // reader : identifiant du Grand écran qui lit (null si aucun) ; unlocked : ce Grand écran a reçu un clic.
-  function hostWarning({ isVideo, stage, reader, unlocked }) {
+  // reader : un Grand écran lit ; screens : nombre de Grands écrans connectés (qui lisent ou non) ;
+  // port : celui du serveur ; unlocked : le Grand écran qui lit a reçu un clic.
+  function hostWarning({ isVideo, stage, reader, screens, port, unlocked }) {
     if (!isVideo) return null;
+    if (!reader && screens > 0) return `Grand écran ouvert, mais pas à l’adresse 127.0.0.1 : ouvrez http://127.0.0.1:${port}/screen sur ce PC`;
     if (!reader) return 'Aucun Grand écran ouvert';
     if (stage !== 'play') return `Grand écran à l’étape ${STAGE_LABELS[stage] || stage} : passez à Jeu pour voir la vidéo`;
     if (!unlocked) return 'Le Grand écran attend un clic pour activer la vidéo';

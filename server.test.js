@@ -349,7 +349,7 @@ test('only the loopback screen reads', async () => {
   const screen = await connect({ role: 'screen' });
   await pause();
   assert.equal(screen.last('state').reader, true);
-  assert.deepEqual(host.last('video'), { reader: true, unlocked: false, key: null, pos: null, error: null });
+  assert.deepEqual(host.last('video'), { reader: true, screens: 1, unlocked: false, key: null, pos: null, error: null });
 
   host.emit('host:open');
   await pause();
@@ -371,7 +371,7 @@ test('only the loopback screen reads', async () => {
   screen.emit('screen:video', { unlocked: true, key: video.key, pos: 3.5, error: null });
   screen.emit('screen:video', { unlocked: 'oui', key: 5, pos: 'x', error: null });   // ignoré
   await pause();
-  assert.deepEqual(host.last('video'), { reader: true, unlocked: true, key: video.key, pos: 3.5, error: null });
+  assert.deepEqual(host.last('video'), { reader: true, screens: 1, unlocked: true, key: video.key, pos: 3.5, error: null });
 
   screen.emit('screen:ended', { seq: 1 });
   await pause();
@@ -383,7 +383,7 @@ test('only the loopback screen reads', async () => {
   assert.equal(host2.last('video').unlocked, true);
   screen.close();
   await pause();
-  assert.deepEqual(host.last('video'), { reader: false, unlocked: false, key: null, pos: null, error: null });
+  assert.deepEqual(host.last('video'), { reader: false, screens: 0, unlocked: false, key: null, pos: null, error: null });
   host.close();
   host2.close();
 });
