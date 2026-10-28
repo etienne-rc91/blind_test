@@ -8,3 +8,4 @@ images/*
 .superpowers/
 parties/*
 !parties/.gitkeep
+.claude/worktrees/
