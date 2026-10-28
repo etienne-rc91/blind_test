@@ -52,7 +52,7 @@ app.use('/images', express.static(IMAGES_DIR, { dotfiles: 'deny', index: false }
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 // ---------- Jeu ----------
-const game = createGame();
+const game = createGame({ onTimer: () => broadcast() });   // fin du compte à rebours QCM
 // Chaque rôle reçoit son propre état : le Grand écran et les Buzzers ne voient jamais les secrets de la Régie.
 function broadcast() {
   io.to('hosts').emit('state', game.publicState({ role: 'host' }));
@@ -95,7 +95,9 @@ function loadScores() {
 }
 
 // ---------- Sockets ----------
-const HOST_ACTIONS = ['open', 'close', 'correct', 'wrong', 'unexclude', 'score', 'kick', 'reset-scores', 'stage', 'join-ip', 'section'];
+// Un client peut envoyer n'importe quoi à la place de la fonction de réponse : on ne l'appelle que si c'en est une.
+const reply = (ack) => (typeof ack === 'function' ? ack : () => {});
+const HOST_ACTIONS = ['open', 'close', 'correct', 'wrong', 'unexclude', 'score', 'kick', 'reset-scores', 'stage', 'join-ip', 'section', 'qcm', 'countdown'];
 const imageExists = (name) => isSafeImageName(name) && fs.existsSync(path.join(IMAGES_DIR, name));
 
 io.on('connection', (socket) => {
@@ -112,17 +114,23 @@ io.on('connection', (socket) => {
   }
 
   // --- Joueurs ---
-  socket.on('join', (rawName, ack = () => {}) => {
+  socket.on('join', (rawName, ack) => {
     const res = game.join(socket.id, rawName);
     if (res.ok) socket.data.teamId = res.teamId;
-    ack(res);
+    reply(ack)(res);
     if (res.ok) broadcast();
   });
 
-  socket.on('buzz', (ack = () => {}) => {
+  socket.on('buzz', (ack) => {
     const at = performance.now();                 // horodatage le plus tôt possible
     const res = game.buzz(socket.id, at);
-    ack(res);
+    reply(ack)(res);
+    if (res.ok) broadcast();
+  });
+
+  socket.on('answer', (letter, ack) => {
+    const res = game.answer(socket.id, letter);
+    reply(ack)(res);
     if (res.ok) broadcast();
   });
 
