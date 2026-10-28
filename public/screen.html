@@ -49,6 +49,14 @@
   #banner.buzzed { background: var(--gold); border-color: var(--gold); color: var(--gold-ink); }
   #banner.buzzed .sub { color: var(--gold-ink); }
   #banner.flash { animation: flash 400ms ease-out; }
+  /* Révélation d'un morceau : remplace le bandeau, le classement reste dessous. */
+  #reveal { border-radius: 2vh; padding: 2.4vh 3vw; display: flex; align-items: center; gap: 3vw; border: .4vh solid var(--green); background: var(--panel); min-height: 0; max-height: 42vh; overflow: hidden; animation: pop 400ms ease-out; }
+  #reveal[hidden] { display: none; }
+  #revealCover { height: 30vh; width: 30vh; flex: none; object-fit: cover; border-radius: 1.4vh; }
+  #revealCover[hidden] { display: none; }
+  #reveal .txt { min-width: 0; flex: 1; }
+  #reveal .lbl { font-size: 3vh; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 700; margin: 0 0 1vh; }
+  #reveal .ans { font-size: 9vh; font-weight: 800; line-height: 1.05; margin: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
   #ranking { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; display: grid; gap: 1.2vh; overflow: hidden; }
   #ranking.dense li { font-size: 3.4vh; }
   #ranking li { display: grid; grid-template-columns: 8vh minmax(0, 1fr) auto; align-items: center; gap: 2vw; background: var(--panel); border-radius: 1.4vh; padding: 0 2.4vw; font-size: 5vh; font-weight: 700; }
@@ -136,6 +144,7 @@
 <section class="stage" id="play" hidden>
   <h1 id="playTitle"><small>Blind test</small>Classement</h1>
   <div id="banner"><span class="who"></span><span class="sub"></span></div>
+  <div id="reveal" hidden><img id="revealCover" alt="" hidden><div class="txt"><p class="lbl">La réponse</p><p class="ans" id="revealAnswer"></p></div></div>
   <ol id="ranking"></ol>
   <div id="qcmView" hidden>
     <div id="qBody"><img id="qImg" alt=""><p id="qText"></p></div>
@@ -173,6 +182,7 @@ socket.on('state', (s) => {
   state = s; render();
 });
 
+$('revealCover').addEventListener('error', () => { $('revealCover').hidden = true; });
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const pts = (n) => `${n} point${Math.abs(n) > 1 ? 's' : ''}`;
 
@@ -212,29 +222,55 @@ function renderPlay() {
   const inQuestion = !!q && q.step !== 'idle';
   $('qcmView').hidden = !inQuestion;
   $('ranking').hidden = inQuestion;
-  $('banner').hidden = inQuestion;
+  const reveal = inQuestion ? null : state.song?.reveal;
+  $('banner').hidden = inQuestion || !!reveal;
+  renderReveal(reveal);
   $('playTitle').firstChild.textContent = 'Blind test';
   const sec0 = state.sections[state.currentSection];
   $('playTitle').lastChild.textContent = state.sections.length > 1 ? `Manche ${state.currentSection + 1} : ${sec0.name}` : sec0.name === 'Manche 1' ? 'Classement' : sec0.name;
   if (inQuestion) return renderQuestion(q);
   cancelAnimationFrame(qTick);
+  if (reveal) return renderRanking();
   if (q) return renderRanking(q.index >= q.total ? 'Fin de la manche' : `Question ${q.index + 1}/${q.total} dans un instant`, '');
   const b = $('banner'), who = b.querySelector('.who'), sub = b.querySelector('.sub');
   const first = state.buzzes[0];
   b.className = state.phase;
   if (state.phase === 'buzzed' && first) {
     who.textContent = first.name;
-    sub.textContent = `Morceau ${state.round}`;
+    sub.textContent = songSub() ?? `Morceau ${state.round}`;
     const sig = `${state.round}:${first.teamId}:${state.excluded.length}`;
     if (sig !== lastBuzz) { lastBuzz = sig; void b.offsetWidth; b.classList.add('flash'); }
   } else if (state.phase === 'open') {
     who.textContent = 'Buzzez !';
-    sub.textContent = `Morceau ${state.round}`;
+    sub.textContent = songSub() ?? `Morceau ${state.round}`;
   } else {
     who.textContent = state.round ? 'En attente du prochain morceau' : 'La partie va commencer';
-    sub.textContent = state.round ? `Morceau ${state.round} terminé` : '';
+    sub.textContent = state.song ? '' : state.round ? `Morceau ${state.round} terminé` : '';
   }
   renderRanking();
+}
+
+// Sous-titre du bandeau pendant qu'un morceau joue ; null = comportement des manches libres.
+function songSub() {
+  const s = state.song;
+  if (!s) return null;
+  if (!s.playing) return '';
+  return s.number == null ? '♪ Morceau en cours' : `♪ Morceau ${s.number} / ${s.total}`;
+}
+
+function renderReveal(reveal) {
+  const box = $('reveal');
+  if (!reveal) { box.hidden = true; box.dataset.sig = ''; return; }
+  const sig = `${reveal.answer}|${reveal.cover ?? ''}`;
+  $('revealAnswer').textContent = reveal.answer;
+  const img = $('revealCover');
+  if (reveal.cover) {
+    if (img.getAttribute('src') !== reveal.cover) img.src = reveal.cover;
+    img.hidden = false;
+  } else { img.removeAttribute('src'); img.hidden = true; }
+  // Replay l'animation seulement quand la révélation change, pas à chaque état reçu.
+  if (box.hidden || box.dataset.sig !== sig) { box.hidden = false; box.style.animation = 'none'; void box.offsetWidth; box.style.animation = ''; }
+  box.dataset.sig = sig;
 }
 
 function renderRanking(bannerText, bannerSub) {
