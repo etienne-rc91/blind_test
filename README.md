@@ -1,6 +1,6 @@
 # Blind test buzzer (réseau local)
 
-Les téléphones servent de buzzers et le PC arbitre. Aucune dépendance à internet pendant la soirée.
+Les téléphones servent de buzzers et le PC arbitre. Aucune dépendance à internet pendant la soirée, sauf pour les morceaux Spotify (voir « Spotify »).
 
 ## Installation (à faire chez soi, avec internet)
     npm install
@@ -30,11 +30,36 @@ Une partie **incomplète** (question sans proposition, sans bonne réponse, imag
 Pendant la soirée, « Suivante ▶ » passe à la manche suivante (les buzzers se ferment). Les points donnés vont dans la manche en cours. Sans partie choisie, la soirée se joue avec une seule manche, « Manche 1 ».
 
 **Format CSV (pour Excel)** : on peut aussi préparer une partie dans Excel (« Enregistrer sous » → CSV, UTF-8 ou non, séparateur `;` ou `,`) puis l'importer, ou déposer le fichier directement dans `parties/`. Partez de `exemple-soiree.csv`.
-- Première ligne obligatoire : `manche;type;question;image;A;B;C;D;reponse`.
-- Une manche **buzzer** tient sur une ligne : son nom et `buzzer`, le reste vide. L'ordre des lignes est l'ordre de la soirée.
+- Première ligne obligatoire : `manche;type;question;image;A;B;C;D;reponse;musique;debut;fin`. Les anciens fichiers à 9 colonnes fonctionnent toujours.
+- Une manche **buzzer** libre tient sur une ligne : son nom et `buzzer`, le reste vide. Avec des morceaux, elle a une ligne par morceau (voir « Morceaux »). L'ordre des lignes est l'ordre de la soirée.
 - Une manche **QCM** a une ligne par question, avec le même nom de manche sur chaque ligne : `question` (texte) et/ou `image`, les propositions `A` à `D`, et la bonne réponse dans `reponse` (A, B, C ou D). Exemple :
   `Culture G;qcm;Qui est cet acteur ?;acteur1.jpg;Brad Pitt;Tom Cruise;Johnny Depp;Keanu Reeves;C`
 - Les images se placent dans le dossier `images/` ; la colonne `image` contient seulement le nom du fichier (pas d'adresse web : il n'y a pas internet en salle).
+
+## Morceaux (musique jouée par l’app)
+Une manche buzzer qui contient des **morceaux** est jouée par la Régie : l’app lance la musique, la coupe au buzz et révèle la réponse. Une manche buzzer sans morceau reste « libre » : vous lancez la musique vous-même, comme avant.
+
+**Préparer dans Création** (manche buzzer) :
+- **+ Fichier** : choisir un fichier audio, copié dans le dossier `musiques/` (mp3, m4a, aac, ogg, oga, wav ou flac ; 50 Mo maximum) ;
+- **+ Spotify** : rechercher un titre (voir « Spotify ») ;
+- la **barre de temps** a deux poignées, Début et Fin, qui bornent le **passage** joué : à la souris, ou avec les flèches (±1 s, Maj ±5 s) ;
+- **▶ Écouter le passage** le joue tel que la salle l’entendra ;
+- la **réponse** est pré-remplie (titre et artiste) et modifiable. Elle n’apparaît sur le Grand écran qu’à la révélation.
+
+**À la main dans le CSV** : une ligne par morceau, avec le même nom de manche, le type `buzzer` et les colonnes `musique;debut;fin` ; la réponse va dans `reponse`.
+- `musique` : le nom du fichier dans `musiques/`, ou `spotify:track:<id>` (un lien `https://open.spotify.com/track/…` fonctionne aussi) ;
+- `debut` et `fin` : au format `m:ss`. Exemple :
+  `Années 80;buzzer;;;;;;;Africa - Toto;africa.mp3;0:45;1:05`
+
+## Spotify
+Les morceaux Spotify demandent internet (et seulement eux) et un compte **Premium**. Le Client Secret n’est pas utilisé.
+1. Sur developer.spotify.com, créez une app. Redirect URI : `http://127.0.0.1:3000/spotify/callback` (si vous changez `PORT`, adaptez le numéro). Cochez Web API et Web Playback SDK.
+2. En mode développement, ajoutez votre e-mail Spotify dans User Management de l’app.
+3. Lancez `SPOTIFY_CLIENT_ID=… npm start` (PowerShell : `$env:SPOTIFY_CLIENT_ID="…"; npm start`), ou saisissez le Client ID dans la page Création.
+4. Ouvrez la Régie et Création sur `http://127.0.0.1:3000/…` (et non `localhost` ni l’IP du réseau) pour garder la connexion. Chrome est recommandé.
+5. Cliquez sur « Se connecter à Spotify » dans Création, puis cherchez vos titres avec **+ Spotify**.
+
+Les jetons sont gardés dans `spotify.json` (jamais commité). Une partie sans morceau Spotify ne charge rien depuis internet.
 
 ## Manches QCM
 Toutes les équipes répondent en même temps, A, B, C ou D, sur leur Buzzer (seules les lettres y apparaissent ; les propositions sont sur le Grand écran). 1 point par bonne réponse.
@@ -68,6 +93,17 @@ Le Grand écran affiche la même adresse que celle choisie dans la Régie (menu 
 - B : bonne réponse, +1 point au premier, buzzers fermés.
 - M : mauvaise réponse, le premier est exclu pour ce morceau et les buzzers rouvrent pour les autres.
 - F : fermer les buzzers.
+
+**Avec des morceaux** (la Régie joue la musique) :
+- Espace lance le passage. Sans effet tant que le morceau en cours n’est pas conclu par B ou F (un double appui ne grille pas de morceau) ; il reprend une musique en pause sans buzz.
+- Le buzz met la musique en pause automatiquement. M la reprend là où elle s’était arrêtée (muette si le passage était fini).
+- B : fanfare et révélation sur le Grand écran. F : arrêt et révélation.
+- R : rejouer l’extrait depuis le début (pas pendant un buzz non jugé).
+- À la fin du passage, la musique s’arrête et les buzzers restent ouverts.
+- Z ne relance jamais la musique.
+- Grand écran : `♪ Morceau n / total` pendant la lecture, puis la révélation (réponse, et pochette pour Spotify) jusqu’au morceau suivant.
+- Une seule Régie joue le son : le bouton « Le son sort ici » la désigne.
+
 - ↺ (liste des équipes) : réouvre le buzzer d'une équipe exclue sur le morceau en cours.
 - Z : annule la dernière action de l'animateur (point, exclusion, remise à zéro, équipe retirée…). Plusieurs appuis remontent plus loin.
 - Les buzz arrivés après le premier restent enregistrés avec leur écart en ms.
@@ -89,3 +125,8 @@ Le Grand écran affiche la même adresse que celle choisie dans la Régie (menu 
 - Les équipes et les scores sont sauvegardés dans `scores.json` et rechargés au redémarrage. Le morceau en cours, lui, repart fermé, et l'historique d'annulation est vidé.
 - Les manches importées, la manche en cours et l'étape du Grand écran sont aussi sauvegardées dans `scores.json`.
 - Nouvelle partie : arrêtez le serveur et supprimez `scores.json` (ou utilisez « Remettre les scores à zéro »).
+- Spotify : si le même compte est utilisé ailleurs en même temps (téléphone), il prend la main sur la lecture.
+- Spotify n’est pas garanti sur Safari (Chrome recommandé).
+- Si Spotify perd le morceau, la Régie affiche une erreur : concluez avec B ou F.
+- Pendant une panne Spotify, le morceau fichier suivant peut démarrer avec quelques secondes de retard.
+- Avec deux Régies ouvertes, la dernière qui agit joue le son.

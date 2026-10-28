@@ -1,7 +1,7 @@
 # Musique pilotée par l’app : fichiers locaux et Spotify — conception
 
 Date : 2026-10-28
-Statut : validé le 2026-10-28
+Statut : construit le 2026-10-28
 
 ## 1. Intention
 
@@ -105,8 +105,8 @@ Les autres blocs de la Régie (Grand écran, Manches, Équipes, Rejoindre) ne ch
 ### 5.1 Qui joue le son
 
 - **La Régie joue le son** (c’est le PC branché aux enceintes). Le serveur décide de l’état de lecture ; la Régie l’applique. Aucune règle de jeu côté navigateur : la Régie ne décide pas de mettre en pause, elle obéit à l’état reçu.
-- État de lecture dans le jeu (nouveau, dans `lib/game.js`) : `playback` = `idle | playing | paused | ended`, plus l’index du morceau courant. Ce champ est modifiable par l’animateur : l’ajouter à `snapshot()` / `restore()`.
-  - Espace → `playing` ; premier buzz → `paused` ; M → `playing` ; R → `playing` depuis Début ; B / F → `idle` (avec révélation) ; la Régie signale la fin du passage par un événement `host:ended` → `ended`. R doit transmettre « depuis Début » à la Régie (par exemple un compteur de relance dans l’état), puisque `playing` → `playing` ne change pas l’état.
+- État de lecture dans le jeu (nouveau, dans `lib/game.js`) : `audio` = `stopped | playing | paused | ended`, plus `concluded` / `outcome` (le morceau est conclu par B ou F) et l’index du morceau courant. Ce champ est modifiable par l’animateur : l’ajouter à `snapshot()` / `restore()`.
+  - Espace → `playing` ; premier buzz → `paused` ; M → `playing` ; R → `playing` depuis Début ; B / F → `stopped` (avec révélation) ; la Régie signale la fin du passage par un événement `host:ended` → `ended`. R doit transmettre « depuis Début » à la Régie (par exemple un compteur de relance dans l’état), puisque `playing` → `playing` ne change pas l’état.
   - La position de reprise est celle où la Régie s’est mise en pause : elle n’est pas renvoyée au serveur (le serveur n’a pas besoin de la connaître).
 - La pause au buzz part du `broadcast()` déjà déclenché par le buzz : rien n’est ajouté avant le timestamp du handler `buzz`.
 - **Plusieurs Régies ouvertes** (deux onglets) : une seule doit jouer. La dernière Régie qui a envoyé une action, ou un bouton « Le son sort ici » : au constructeur de choisir le plus simple, mais jamais deux sons en même temps.
@@ -145,19 +145,19 @@ Les autres blocs de la Régie (Grand écran, Manches, Équipes, Rejoindre) ne ch
 
 - Avancement par manche buzzer avec morceaux : index du prochain morceau, rangé comme l’avancement QCM (par position de manche), sauvegardé dans `scores.json`. `round.number` reste le compteur affiché pour les manches libres.
 - Espace après le dernier morceau de la manche : rien ne se lance, la Régie affiche « Manche terminée — Suivante ▶ ».
-- **Z** restaure l’état, `playback` compris, et la Régie applique l’état restauré :
+- **Z** restaure l’état, `audio` compris, et la Régie applique l’état restauré :
   - Z après B ou F : retire la révélation et les points (comme aujourd’hui) ; la musique **ne repart pas** (`paused`, reprise possible avec M).
   - Z après M : la musique se remet en pause, l’équipe n’est plus exclue.
   - Z après Espace : la musique s’arrête, l’avancement revient au morceau précédent.
   - Z après B ou F sur un passage déjà terminé : retour à `ended`, pas `paused`.
   - Règle générale : un Z ne relance jamais la musique tout seul.
 - Buzz après la fin du passage puis M : les buzzers rouvrent, la musique reste silencieuse (elle ne joue jamais au-delà de Fin ; R permet de réécouter).
-- Au redémarrage du serveur, le morceau en cours repart fermé et `idle` (comme aujourd’hui).
+- Au redémarrage du serveur, le morceau en cours repart fermé et `stopped` (comme aujourd’hui).
 
 ### 5.6 Ce que chaque écran reçoit
 
-- `publicState({ role: 'host' })` : liste complète des morceaux de la manche (réponse comprise), `playback`, morceau courant.
-- `publicState({ role: 'screen' })` : numéro du morceau et `playback` ; la réponse et la pochette **seulement une fois dévoilées**.
+- `publicState({ role: 'host' })` : liste complète des morceaux de la manche (réponse comprise), `audio`, morceau courant.
+- `publicState({ role: 'screen' })` : numéro du morceau et `playing` (lecture en cours) ; la réponse et la pochette **seulement une fois dévoilées**.
 - `publicState({ role: 'player' })` : rien de nouveau. Jamais de réponse, de nom de fichier ni d’identifiant Spotify (un nom de fichier ou un titre Spotify donnerait la réponse).
 - Les routes `/musiques/…` sont servies sans clé (comme `/images`) ; c’est acceptable car le nom des fichiers n’est envoyé qu’à la Régie. Le constructeur peut les protéger par la clé hôte si c’est simple.
 
@@ -177,7 +177,7 @@ Synthétisé en WebAudio dans la Régie, comme le bip actuel (aucun fichier, auc
 
 ## 6. Ordre de construction
 
-1. **Format et modèle** : colonnes `musique;debut;fin`, `buildSections` / `writeCsv`, avancement des morceaux, `playback` dans le jeu (avec `snapshot` / `restore`), contenu de `publicState` par rôle, règles d’édition à chaud. Tests `node --test`.
+1. **Format et modèle** : colonnes `musique;debut;fin`, `buildSections` / `writeCsv`, avancement des morceaux, `audio` dans le jeu (avec `snapshot` / `restore`), contenu de `publicState` par rôle, règles d’édition à chaud. Tests `node --test`.
 2. **Régie avec fichiers** : `musiques/` servi, lecteur `<audio>`, bloc central (maquette), pause au buzz, reprise sur M, son de victoire, fin de passage, Z.
 3. **Grand écran** : indicateur de morceau, révélation sur B / F.
 4. **Création avec fichiers** : + Fichier (upload), barre de temps à deux poignées, Écouter le passage, réponse.

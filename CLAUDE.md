@@ -24,7 +24,7 @@ Toujours utiliser ces noms, dans la conversation comme dans le README et l'inter
 | **Buzzer** | une équipe | téléphone | `player` (`public/player.html`) | `/` |
 | **Grand écran** | toute la salle | projecteur | `screen` (`public/screen.html`) | `/screen` |
 
-Le Grand écran n'existe pas encore. Il est en lecture seule et son contenu dépend de l'étape choisie dans la Régie (voir ci-dessous).
+Le Grand écran est en lecture seule et son contenu dépend de l'étape choisie dans la Régie (voir ci-dessous).
 
 ### Déroulé d'une partie
 
@@ -37,6 +37,8 @@ Le Grand écran n'existe pas encore. Il est en lecture seule et son contenu dép
 | **Manche QCM** | Toutes les équipes répondent A/B/C/D sur leur Buzzer avant la fin d'un compte à rebours. | type `qcm` |
 | **Morceau** | Une question d'une manche buzzer, lancée avec Espace. | `round` (existant) |
 | **Question** | Une question d'une manche QCM, décrite dans le fichier CSV. | `question` |
+| **Passage** | Extrait d’un morceau, de Début à Fin. | `song` (`start`, `end`) |
+| **Révélation** | Réponse d’un morceau dévoilée sur le Grand écran (après B ou F). | — |
 | **Podium** | Classement dense sur le total : ex aequo à la même place, sans trou (1, 1, 2). Toutes les équipes des places 1 à 3 y montent. | — |
 
 `phase` est réservé à l'état des buzzers (`closed | open | buzzed`). Ne pas l'utiliser pour les étapes ni pour les manches.
@@ -46,6 +48,7 @@ Conception détaillée : `docs/superpowers/specs/2026-10-28-grand-ecran-manches-
 ## 2. Contraintes non négociables
 
 1. **Aucune dépendance à internet pendant la soirée.** Pas de CDN, pas de police distante, pas d'appel à un service externe. Tout est servi par le serveur local. `npm install` se fait à la maison.
+   **Seule exception : les morceaux Spotify** (connexion, recherche, lecteur Spotify, pochettes). Ils exigent internet, et uniquement eux : une partie sans morceau Spotify ne charge rien de distant, et une panne de Spotify ne bloque jamais le jeu.
 2. **Pas de nouvelle dépendance npm sans en parler.** Les dépendances actuelles : `express`, `socket.io`, `qrcode`. Versions figées (pas de `^`).
 3. **Pas d'étape de build.** HTML + CSS + JS vanilla dans `public/`. Pas de framework front, pas de bundler, pas de TypeScript.
 4. **Le serveur est l'unique source de vérité.** Les pages ne font qu'afficher l'état reçu (`state`) et envoyer des intentions. Aucune règle de jeu côté navigateur.
@@ -59,6 +62,8 @@ buzzer/
 ├── server.js            Serveur : routes Express, API /api (parties, images), sockets, sauvegarde
 ├── lib/
 │   ├── game.js          État du jeu et règles (manches, QCM, annulation, nouvelle soirée), sans réseau
+│   ├── songs.js         Morceaux d’une manche buzzer : fichiers audio, Début/Fin, validation
+│   ├── spotify.js       Connexion Spotify (PKCE), recherche, jetons (spotify.json)
 │   ├── ranking.js       Classement dense et podium
 │   ├── csv.js           Décodage (UTF-8 / Windows-1252) et parsing CSV
 │   ├── game-file.js     CSV ↔ manches (validation stricte ou brouillon), écriture CSV
@@ -68,10 +73,13 @@ buzzer/
 │   ├── host.html        Régie (PC) : contrôles clavier, manches, équipes
 │   ├── player.html      Buzzer (téléphone)
 │   ├── screen.html      Grand écran (projecteur)
+│   ├── players.js       Lecteur audio commun (fichiers + Spotify), partagé par la Régie et Création
 │   ├── parties.html     Sélection de la partie (clé hôte)
 │   └── creation.html    Création / modification d'une partie (clé hôte)
 ├── parties/             Une partie = un fichier CSV (ignoré par git)
 ├── images/              Images des questions QCM (ignoré par git)
+├── musiques/            Fichiers audio des morceaux (ignoré par git)
+├── spotify.json         Jetons Spotify (généré, ignoré par git)
 ├── scores.json          Sauvegarde des équipes et scores (généré, ignoré par git)
 ├── package.json
 └── README.md            Mode d'emploi pour l'animateur + check-list salle
@@ -106,14 +114,14 @@ PORT=4000 npm start
 SCORES_FILE=/chemin/scores.json npm start
 ```
 
-Il n'y a pas encore de tests automatisés. Vérification manuelle : lancer le serveur, ouvrir la Régie (`/host?key=…`) et deux Buzzers (`/`), jouer un morceau complet (Espace, buzz, B / M, Z).
+Les tests automatisés se lancent avec `npm test` (`node --test`, y compris `server.test.js`). Vérification manuelle en plus : lancer le serveur, ouvrir la Régie (`/host?key=…`) et deux Buzzers (`/`), jouer un morceau complet (Espace, buzz, B / M, Z).
 
 ## 5. Conventions
 
 - **Langue** : interface, README et commentaires de code en **français** (le public et l'animateur sont francophones). Identifiants en anglais. Messages de commit en **anglais**, format Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`…).
 - **Typographie française** dans l'UI : apostrophe typographique `’`, espace avant `:` `?` `!`.
 - **Style JS** : CommonJS côté serveur, pas de point-virgule omis, fonctions courtes, commentaires qui expliquent le *pourquoi*.
-- **Pages** : un seul fichier HTML par écran, CSS et JS inline. Couleurs en variables CSS sur `:root`, avec variante `prefers-color-scheme: dark`. Respecter `prefers-reduced-motion`.
+- **Pages** : un seul fichier HTML par écran, CSS et JS inline. Seule exception assumée : `public/players.js`, le lecteur audio commun à la Régie et à Création (évite de dupliquer la couche Spotify). Couleurs en variables CSS sur `:root`, avec variante `prefers-color-scheme: dark`. Respecter `prefers-reduced-motion`.
 - **Validation des entrées** côté serveur : tout ce qui vient d'un socket est nettoyé (`cleanName`, vérification d'entier, bornes).
 - **Nouvelle page** : ajouter sa route dans `server.js` (avant `express.static`), la documenter dans le README.
 - Mettre à jour le README (section « Déroulé » ou « Limites connues ») quand un comportement visible par l'animateur change.
