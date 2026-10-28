@@ -140,6 +140,7 @@ api.put('/parties/:name', (req, res) => {
       ...sec,
       orig: sections[i]?.orig,
       questions: sec.questions.map((q, k) => ({ ...q, orig: sections[i]?.questions?.[k]?.orig })),
+      ...(sec.songs ? { songs: sec.songs.map((x, k) => ({ ...x, orig: sections[i]?.songs?.[k]?.orig })) } : {}),
     }));
     const check = checkLiveEdit({ oldSections: live.sections, newSections: withOrig, progress: live.progress, currentSection: live.currentSection, qcmStep: live.qcmStep });
     if (!check.ok) return res.status(409).json({ error: check.error });
