@@ -626,7 +626,8 @@ function songStatusLabel(sg) {
   if (sg.audio === 'ended') return 'Passage terminé';
   if (sg.audible) return 'Lecture';
   if (sg.audio === 'playing' && state.phase === 'buzzed') return 'En pause (buzz)';
-  if (sg.audio === 'paused') return 'En pause';
+  // En QCM rien ne reprend un extrait en pause (Z d’« Afficher la question ») : il est coupé, R le relance.
+  if (sg.audio === 'paused') return state.qcm ? 'Coupé' : 'En pause';
   return 'Arrêté';
 }
 const sourceLabel = (x) => (x.source === 'spotify' ? '♪ Spotify' : '📁');

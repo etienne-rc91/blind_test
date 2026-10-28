@@ -940,7 +940,7 @@ function renderResults(tracks) {
   for (const t of tracks) {
     const li = el('li');
     const b = el('button', null, `${t.artists} — ${t.name} (${fmt(t.durationSec)})`);
-    b.title = 'Ajouter ce titre à la manche';
+    b.title = clipTarget().type === 'qcm' ? 'Utiliser ce titre comme extrait' : 'Ajouter ce titre à la manche';
     b.onclick = () => addSpotifySong(t);
     li.append(b); ol.append(li);
   }
