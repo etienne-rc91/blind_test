@@ -265,3 +265,12 @@ test('play warns when the partie has spotify songs and spotify is not connected'
   const r = await json(await api('POST', '/api/parties/AvecSpotify/play', { confirm: true }));
   assert.deepEqual(r, { status: 200, body: { ok: true, warnings: ['Cette partie contient des morceaux Spotify, mais Spotify n’est pas connecté.'] } });
 });
+
+test('play warns when a qcm extract uses spotify and spotify is not connected', async () => {
+  const extract = { source: 'spotify', ref: '4uLU6hMCjMI75M1A2tKUQC', start: 0, end: 20 };
+  const withExtract = [{ name: 'Paroles', type: 'qcm', questions: [{ ...Q('Terminez les paroles'), extract }] }];
+  const saved = await json(await api('PUT', '/api/parties/ExtraitSpotify', { sections: withExtract, overwrite: false }));
+  assert.equal(saved.status, 200);
+  const r = await json(await api('POST', '/api/parties/ExtraitSpotify/play', { confirm: true }));
+  assert.deepEqual(r, { status: 200, body: { ok: true, warnings: ['Cette partie contient des morceaux Spotify, mais Spotify n’est pas connecté.'] } });
+});

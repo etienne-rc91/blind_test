@@ -70,6 +70,10 @@
   #qAnswers li.bad { border-color: var(--red); }
   #qMain { flex: none; font: inherit; font-size: 1.4rem; font-weight: 800; padding: 18px; border-radius: 14px; border: 0; background: var(--ink); color: var(--bg); cursor: pointer; }
   #qMain kbd { font: inherit; font-size: .9rem; font-weight: 400; opacity: .7; margin-left: 10px; }
+  /* Extrait de la question QCM : bloc compact entre la question et le bouton principal. */
+  #qExtract { flex: none; background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 10px 16px; display: flex; flex-direction: column; gap: 6px; }
+  #qExtract[hidden], #qxSoundHere[hidden], #qxSkip[hidden], #qxSpotify[hidden] { display: none; }
+  #qExtract .songActions { margin-top: 0; }
   /* Morceau (manche avec morceaux) : réponse, avancement du passage, liste. Hauteur bornée pour que tout tienne dans la fenêtre. */
   #songPanel { flex: none; max-height: 44vh; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 12px; }
   #songPanel[hidden], #soundHere[hidden], #bNextSection[hidden] { display: none; }
@@ -78,19 +82,19 @@
   .songHead { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--muted); font-size: 1.05rem; }
   #songAnswer { font-size: clamp(1.6rem, min(4vw, 7vh), 3rem); font-weight: 800; line-height: 1.05; overflow-wrap: anywhere; }
   .hint.secret { font-size: .8rem; }
-  #songStatus { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; }
-  #songTime { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+  #songStatus, #qxStatus { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; }
+  #songTime, #qxTime { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
   .bar { height: 12px; border-radius: 6px; background: var(--track); overflow: hidden; flex: none; }
-  #songBar { height: 100%; width: 0; background: var(--accent); border-radius: 6px; }
-  #songError { margin: 0; color: var(--red); font-weight: 700; }
-  #spotifyLine { margin: 0; }
-  #spotifyLine .on { color: var(--green); font-weight: 700; }
-  #songError:empty { display: none; }
+  #songBar, #qxBar { height: 100%; width: 0; background: var(--accent); border-radius: 6px; }
+  #songError, #qxError { margin: 0; color: var(--red); font-weight: 700; }
+  #spotifyLine, #qxSpotify { margin: 0; }
+  #spotifyLine .on, #qxSpotify .on { color: var(--green); font-weight: 700; }
+  #songError:empty, #qxError:empty { display: none; }
   .songActions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
-  .songActions button, #soundHere { font: inherit; font-size: 1rem; font-weight: 700; padding: 8px 12px; border-radius: 10px; border: 2px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+  .songActions button, #soundHere, #qxSoundHere { font: inherit; font-size: 1rem; font-weight: 700; padding: 8px 12px; border-radius: 10px; border: 2px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
   .songActions button kbd { font: inherit; font-size: .85rem; font-weight: 400; color: var(--muted); margin-left: 8px; }
   #bNextSection { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-  #soundHere { border-color: var(--accent); color: var(--accent); padding: 4px 10px; font-size: .9rem; }
+  #soundHere, #qxSoundHere { border-color: var(--accent); color: var(--accent); padding: 4px 10px; font-size: .9rem; }
   .songSide .label { color: var(--muted); font-size: .95rem; }
   #songList { margin: 0; padding: 0; list-style: none; overflow-y: auto; min-height: 0; flex: 1; }
   #songList li { padding: 2px 0; overflow-wrap: anywhere; }
@@ -187,6 +191,17 @@
         <div id="qTimer" aria-live="polite"></div>
         <ul id="qAnswers" aria-label="Réponses des équipes"></ul>
       </div>
+      <div id="qExtract" hidden>
+        <div class="songHead"><span id="qxMeta"></span><button id="qxSoundHere" hidden title="Jouer la musique sur ce PC plutôt que sur l’autre Régie">Le son sort ici</button></div>
+        <p id="qxSpotify" class="hint" hidden></p>
+        <div id="qxStatus"><span id="qxState"></span><span id="qxTime"></span></div>
+        <div class="bar"><div id="qxBar"></div></div>
+        <p id="qxError" role="alert"></p>
+        <div class="songActions">
+          <button id="qxReplay" title="Relancer l’extrait depuis Début">Rejouer l’extrait<kbd>R</kbd></button>
+          <button id="qxSkip" title="Couper l’extrait et afficher la question sur le Grand écran">Afficher la question</button>
+        </div>
+      </div>
       <button id="qMain"></button>
     </div>
     <span id="sound">Le son s’active au premier clic ou à la première touche.</span>
@@ -279,12 +294,17 @@ $('partiesLink').href = `/parties?key=${encodeURIComponent(key)}`;
 for (const b of document.querySelectorAll('[data-stage]')) b.onclick = () => act('host:stage', { stage: b.dataset.stage });
 $('bReplay').onclick = () => act('host:replay');
 $('bNextSection').onclick = () => act('host:section', { index: state.currentSection + 1 });
-$('soundHere').onclick = () => act('host:sound-here');
+$('soundHere').onclick = $('qxSoundHere').onclick = () => act('host:sound-here');
+$('qxReplay').onclick = () => act('host:replay');
+$('qxSkip').onclick = () => act('host:qcm', { action: 'skip-extract' });
 $('resetScores').onclick = () => { if (confirm('Remettre tous les scores à zéro ?')) act('host:reset-scores'); };
 // ----- QCM -----
 // Une seule action possible à chaque étape ; le serveur ignore une action envoyée deux fois.
 const QCM_NEXT = {
-  idle: { action: 'show-question', label: 'Afficher la question' },
+  idle: { action: 'show-question', label: 'Afficher la question' },   // « Afficher la page de la question » si extrait
+  intro: { action: 'play-extract', label: 'Lancer l’extrait' },
+  // Entrée sans effet pendant l’extrait : un double appui ne coupe pas la musique (bouton « Afficher la question » à part).
+  listening: { action: null, label: 'Extrait en cours…' },
   question: { action: 'show-choices', label: 'Afficher les propositions' },
   choices: { action: 'start', label: 'Lancer le compte à rebours' },
   countdown: { action: null, label: 'Compte à rebours en cours…' },
@@ -292,7 +312,7 @@ const QCM_NEXT = {
   revealed: { action: 'next', label: 'Question suivante' },
 };
 const STEP_LABEL = {
-  idle: 'Classement affiché', question: 'Question affichée', choices: 'Propositions affichées',
+  idle: 'Classement affiché', intro: 'Page de la question (sans texte)', listening: 'Extrait en cours', question: 'Question affichée', choices: 'Propositions affichées',
   countdown: 'Compte à rebours', locked: 'Temps écoulé', revealed: 'Réponse révélée',
 };
 function qcmNext() {
@@ -312,6 +332,7 @@ addEventListener('keydown', (e) => {
     // Espace ne fait rien en QCM, mais ne doit pas non plus « cliquer » le bouton qui a le focus (+, ✕…).
     if (k === ' ') e.preventDefault();
     if (k === 'enter') { e.preventDefault(); $('qMain').click(); }
+    else if (k === 'r' && state.song && !e.metaKey && !e.ctrlKey && !e.altKey) act('host:replay');   // Cmd+R recharge la page
     return;
   }
   if (k === ' ') { e.preventDefault(); act('host:open'); }
@@ -521,8 +542,11 @@ function warmSpotify() {
   try { getPlayer('spotify').prepare().catch((e) => showSongError(e.message)); } catch (e) { showSongError(e.message); }
 }
 function renderSpotify() {
-  const line = $('spotifyLine');
-  line.hidden = !state || $('songPanel').hidden || !sectionHasSpotify();
+  fillSpotifyLine($('spotifyLine'), $('songPanel').hidden);
+  fillSpotifyLine($('qxSpotify'), $('qExtract').hidden);
+}
+function fillSpotifyLine(line, panelHidden) {
+  line.hidden = !state || panelHidden || !sectionHasSpotify();
   if (line.hidden) return;
   line.innerHTML = '';
   if (spotifyStatus?.connected) {
@@ -575,9 +599,25 @@ function renderQcm(q) {
   }
   const nx = QCM_NEXT[q.step];
   $('qMain').innerHTML = '';
-  $('qMain').append(done ? 'Manche terminée' : nx.label);
+  $('qMain').append(done ? 'Manche terminée' : q.step === 'idle' && q.hasExtract ? 'Afficher la page de la question' : nx.label);
   if (qcmNext()) { const kb = document.createElement('kbd'); kb.textContent = 'Entrée'; $('qMain').append(kb); }
   $('qMain').disabled = !qcmNext();
+  renderExtract(q, done);
+}
+// Extrait de la question en cours : source, état, avancement, Rejouer (R) et « Afficher la question » pendant l’écoute.
+function renderExtract(q, done) {
+  const box = $('qExtract');
+  const x = state.song?.songs[q.index] || null;
+  box.hidden = done || !q.hasExtract || q.step === 'idle' || !x;
+  if (box.hidden) return;
+  const launched = !!curSong();
+  $('qxMeta').textContent = `Extrait · ${sourceLabel(x)}`;
+  $('qxSoundHere').hidden = soundMine;
+  $('qxState').textContent = launched ? songStatusLabel(state.song) : 'Pas encore lancé';
+  $('qxReplay').disabled = !launched;
+  $('qxSkip').hidden = q.step !== 'listening';
+  renderSpotify();
+  renderSongProgress();
 }
 const RUNNING_STEPS = ['countdown', 'locked', 'revealed'];
 
@@ -625,15 +665,18 @@ function renderSong() {
   renderSongProgress();
 }
 // Avancement dans le passage : aussi en pause, pour montrer où la musique reprendra.
+// En QCM, il s’affiche dans le bloc de l’extrait ; avant son lancement, seule la durée du passage est connue.
 function renderSongProgress() {
-  const cur = curSong();
-  if ($('songPanel').hidden) return;
-  if (!cur) { $('songBar').style.width = '0%'; $('songTime').textContent = ''; $('songError').textContent = ''; return; }
+  const qx = !!state?.qcm;
+  const [panel, bar, time, err] = qx ? ['qExtract', 'qxBar', 'qxTime', 'qxError'] : ['songPanel', 'songBar', 'songTime', 'songError'];
+  if ($(panel).hidden) return;
+  const cur = curSong() || (qx ? state.song?.songs[state.qcm.index] : null);
+  if (!cur) { $(bar).style.width = '0%'; $(time).textContent = ''; $(err).textContent = ''; return; }
   const len = cur.end - cur.start;
-  const at = posKey === songKey() && pos !== null ? Math.min(Math.max(pos - cur.start, 0), len) : 0;
-  $('songBar').style.width = soundMine ? `${(at / len) * 100}%` : '0%';
-  $('songTime').textContent = soundMine ? `${fmtTime(at)} / ${fmtTime(len)} du passage` : 'Le son sort sur une autre Régie';
-  $('songError').textContent = soundMine ? songError : '';
+  const at = curSong() && posKey === songKey() && pos !== null ? Math.min(Math.max(pos - cur.start, 0), len) : 0;
+  $(bar).style.width = soundMine ? `${(at / len) * 100}%` : '0%';
+  $(time).textContent = soundMine ? `${fmtTime(at)} / ${fmtTime(len)} du passage` : 'Le son sort sur une autre Régie';
+  $(err).textContent = soundMine && curSong() ? songError : '';
 }
 // Libellé de Espace pendant une manche avec morceaux (inchangé dans une manche libre).
 function renderOpenButton() {

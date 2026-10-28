@@ -110,6 +110,7 @@ const game = createGame({
 // Une panne ne gêne pas le jeu : la révélation se fait alors sans pochette.
 function prefetchCover() {
   const st = game.publicState({ role: 'host' }).song;
+  if (st?.kind === 'qcm') return;   // pas de pochette à révéler en QCM
   const cur = st && st.index !== null && !st.concluded ? st.songs[st.index] : null;
   if (!cur || cur.source !== 'spotify' || spotify.cachedTrack(cur.ref) || !spotify.status().connected) return;
   spotify.track(cur.ref)
@@ -244,7 +245,9 @@ api.post('/parties/:name/play', (req, res) => {
   }
   broadcast();
   // Vérification avant la soirée : on prévient sans bloquer.
-  const hasSpotify = r.sections.some((s) => (s.songs || []).some((x) => x.source === 'spotify'));
+  // Morceaux des manches buzzer et extraits des questions QCM.
+  const hasSpotify = r.sections.some((s) => (s.songs || []).some((x) => x.source === 'spotify')
+    || (s.questions || []).some((q) => q.extract?.source === 'spotify'));
   const warnings = hasSpotify && !spotify.status().connected ? ['Cette partie contient des morceaux Spotify, mais Spotify n’est pas connecté.'] : [];
   res.json({ ok: true, warnings });
 });
