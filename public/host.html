@@ -239,6 +239,8 @@ addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (k === 'z') return act('host:undo');
   if (state?.qcm) {
+    // Espace ne fait rien en QCM, mais ne doit pas non plus « cliquer » le bouton qui a le focus (+, ✕…).
+    if (k === ' ') e.preventDefault();
     if (k === 'enter') { e.preventDefault(); $('qMain').click(); }
     return;
   }
