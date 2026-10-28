@@ -35,7 +35,7 @@ Le Grand écran est en lecture seule et son contenu dépend de l'étape choisie 
 | **Manche** | Un thème de la partie (« Cinéma », « Années 80 »), d'un type donné. Les scores sont comptés par manche. | `section` |
 | **Manche buzzer** | La première équipe qui buzze répond ; l'animateur valide (B) ou refuse (M). | type `buzzer` |
 | **Manche QCM** | Toutes les équipes répondent A/B/C/D sur leur Buzzer avant la fin d'un compte à rebours. | type `qcm` |
-| **Morceau** | Une question d'une manche buzzer, lancée avec Espace. | `round` (existant) |
+| **Morceau** | Une question d'une manche buzzer, lancée avec Espace. Dans une manche avec morceaux, le code dit `song` (`section.songs`) ; `round` reste le compteur de la manche libre. | `round` (existant), `song` |
 | **Question** | Une question d'une manche QCM, décrite dans le fichier CSV. | `question` |
 | **Passage** | Extrait d’un morceau, de Début à Fin. | `song` (`start`, `end`) |
 | **Révélation** | Réponse d’un morceau dévoilée sur le Grand écran (après B ou F). | — |
@@ -59,7 +59,7 @@ Conception détaillée : `docs/superpowers/specs/2026-10-28-grand-ecran-manches-
 
 ```
 buzzer/
-├── server.js            Serveur : routes Express, API /api (parties, images), sockets, sauvegarde
+├── server.js            Serveur : routes Express, API /api (parties, images, musiques, spotify), sockets, sauvegarde, Régie qui joue le son
 ├── lib/
 │   ├── game.js          État du jeu et règles (manches, QCM, annulation, nouvelle soirée), sans réseau
 │   ├── songs.js         Morceaux d’une manche buzzer : fichiers audio, Début/Fin, validation
