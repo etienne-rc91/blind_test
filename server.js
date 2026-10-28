@@ -38,6 +38,7 @@ app.get('/host', (req, res) => {
   if (req.query.key !== HOST_KEY) return res.status(403).send('Clé hôte invalide. Elle est affichée dans la console du serveur.');
   res.sendFile(path.join(__dirname, 'public', 'host.html'));
 });
+app.get('/screen', (req, res) => res.sendFile(path.join(__dirname, 'public', 'screen.html')));
 app.get('/qr.svg', async (req, res) => {
   const ip = String(req.query.ip || (lanAddresses()[0] || {}).ip || 'localhost');
   if (!/^[\d.]+$|^localhost$/.test(ip)) return res.status(400).end();
@@ -48,7 +49,15 @@ app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 // ---------- Jeu ----------
 const game = createGame();
-const broadcast = () => { io.emit('state', game.publicState({ role: 'host' })); scheduleSave(); };
+// Chaque rôle reçoit son propre état : le Grand écran et les Buzzers ne voient jamais les secrets de la Régie.
+function broadcast() {
+  io.to('hosts').emit('state', game.publicState({ role: 'host' }));
+  io.to('screens').emit('state', game.publicState({ role: 'screen' }));
+  for (const sock of io.sockets.sockets.values()) {
+    if (sock.data.role === 'player') sock.emit('state', game.publicState({ role: 'player', teamId: sock.data.teamId }));
+  }
+  scheduleSave();
+}
 
 // ---------- Sauvegarde des scores ----------
 // Écriture atomique de game.toSaved(), regroupée sur 300 ms.
@@ -82,21 +91,25 @@ function loadScores() {
 }
 
 // ---------- Sockets ----------
-const HOST_ACTIONS = ['open', 'close', 'correct', 'wrong', 'unexclude', 'score', 'kick', 'reset-scores'];
+const HOST_ACTIONS = ['open', 'close', 'correct', 'wrong', 'unexclude', 'score', 'kick', 'reset-scores', 'stage', 'join-ip'];
 
 io.on('connection', (socket) => {
   const { role, key } = socket.handshake.auth || {};
   const isHost = role === 'host' && key === HOST_KEY;
+  // Rôle effectif : sans la bonne clé, on est joueur. Le Grand écran n'a pas de clé : il ne reçoit aucun secret.
+  socket.data.role = isHost ? 'host' : role === 'screen' ? 'screen' : 'player';
+  socket.data.teamId = null;
 
-  if (isHost) {
-    socket.join('hosts');
+  if (socket.data.role !== 'player') {
+    socket.join(socket.data.role === 'host' ? 'hosts' : 'screens');
     socket.emit('info', { ips: lanAddresses(), port: PORT });
   }
-  socket.emit('state', game.publicState({ role: 'host' }));
+  socket.emit('state', game.publicState({ role: socket.data.role }));
 
   // --- Joueurs ---
   socket.on('join', (rawName, ack = () => {}) => {
     const res = game.join(socket.id, rawName);
+    if (res.ok) socket.data.teamId = res.teamId;
     ack(res);
     if (res.ok) broadcast();
   });
@@ -113,7 +126,10 @@ io.on('connection', (socket) => {
     socket.on(`host:${action}`, (payload) => {
       if (!isHost) return;
       const res = game.host(action, payload);
-      for (const sid of res.kickedSockets || []) io.sockets.sockets.get(sid)?.emit('kicked');
+      for (const sid of res.kickedSockets || []) {
+        const sock = io.sockets.sockets.get(sid);
+        if (sock) { sock.data.teamId = null; sock.emit('kicked'); }
+      }
       broadcast();
     });
   }
