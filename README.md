@@ -122,7 +122,7 @@ Le Grand écran affiche la même adresse que celle choisie dans la Régie (menu 
 - La mise en veille de l'écran n'est pas bloquée sur les téléphones : l'API Wake Lock exige HTTPS, et la page est servie en HTTP sur l'IP locale.
   - Demandez d'allonger la mise en veille.
   - Une reconnexion automatique rejoint l'équipe en moins d'une seconde au réveil.
-- Les équipes et les scores sont sauvegardés dans `scores.json` et rechargés au redémarrage. Le morceau en cours, lui, repart fermé, et l'historique d'annulation est vidé.
+- Les équipes et les scores sont sauvegardés dans `scores.json` et rechargés au redémarrage. Le morceau en cours, lui, repart fermé, et l'historique d'annulation est vidé. Dans une manche avec morceaux, un morceau interrompu (ni B ni F) n’est pas compté : Espace le rejoue depuis Début.
 - Les manches importées, la manche en cours et l'étape du Grand écran sont aussi sauvegardées dans `scores.json`.
 - Nouvelle partie : arrêtez le serveur et supprimez `scores.json` (ou utilisez « Remettre les scores à zéro »).
 - Spotify : si le même compte est utilisé ailleurs en même temps (téléphone), il prend la main sur la lecture.
