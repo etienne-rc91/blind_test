@@ -8,12 +8,11 @@ const os = require('os');
 const crypto = require('crypto');
 const QRCode = require('qrcode');
 const { Server } = require('socket.io');
+const { createGame } = require('./lib/game');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST_KEY = process.env.HOST_KEY || crypto.randomBytes(3).toString('hex');
-const MAX_NAME = 24;
 const SCORES_FILE = process.env.SCORES_FILE || path.join(__dirname, 'scores.json');
-const MAX_UNDO = 50;
 
 const app = express();
 const server = http.createServer(app);
@@ -47,47 +46,15 @@ app.get('/qr.svg', async (req, res) => {
 });
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
-// ---------- État ----------
-/** @type {Map<string, {id:string,name:string,score:number,sockets:Set<string>}>} */
-const teams = new Map();
-const round = {
-  phase: 'closed',          // closed | open | buzzed
-  buzzes: [],               // [{teamId, at}] — at = performance.now() à la réception
-  excluded: new Set(),      // équipes ayant donné une mauvaise réponse sur ce morceau
-  number: 0,
-};
-
-const teamIdOf = (name) => name.trim().toLowerCase().replace(/\s+/g, ' ');
-const cleanName = (name) => String(name || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, MAX_NAME);
-
-function publicState() {
-  const t0 = round.buzzes.length ? round.buzzes[0].at : 0;
-  return {
-    phase: round.phase,
-    round: round.number,
-    buzzes: round.buzzes.map((b, i) => ({
-      teamId: b.teamId,
-      name: teams.get(b.teamId)?.name ?? '?',
-      rank: i + 1,
-      deltaMs: Math.round((b.at - t0) * 10) / 10,
-    })),
-    excluded: [...round.excluded],
-    canUndo: history.length > 0,
-    teams: [...teams.values()]
-      .map((t) => ({ id: t.id, name: t.name, score: t.score, online: t.sockets.size }))
-      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'fr')),
-  };
-}
-const broadcast = () => { io.emit('state', publicState()); scheduleSave(); };
+// ---------- Jeu ----------
+const game = createGame();
+const broadcast = () => { io.emit('state', game.publicState({ role: 'host' })); scheduleSave(); };
 
 // ---------- Sauvegarde des scores ----------
-// Les équipes et leurs scores survivent à un redémarrage. L'état du morceau en cours, lui, repart fermé.
+// Écriture atomique de game.toSaved(), regroupée sur 300 ms.
 let lastSaved = '', saveTimer = null;
 function saveScores() {
-  const data = JSON.stringify({
-    round: round.number,
-    teams: [...teams.values()].map(({ id, name, score }) => ({ id, name, score })),
-  }, null, 2);
+  const data = JSON.stringify(game.toSaved(), null, 2);
   if (data === lastSaved) return;
   try {
     fs.writeFileSync(SCORES_FILE + '.tmp', data);
@@ -110,131 +77,53 @@ function loadScores() {
     try { fs.renameSync(SCORES_FILE, SCORES_FILE + '.bad'); } catch {}
     return;
   }
-  for (const t of Array.isArray(data.teams) ? data.teams : []) {
-    if (typeof t.id === 'string' && typeof t.name === 'string' && Number.isInteger(t.score)) {
-      teams.set(t.id, { id: t.id, name: t.name, score: t.score, sockets: new Set() });
-    }
-  }
-  if (Number.isInteger(data.round)) round.number = data.round;
-  console.log(`  ${teams.size} équipe(s) et leurs scores rechargés depuis ${path.basename(SCORES_FILE)}`);
-}
-
-// ---------- Annuler ----------
-// Pile des états avant chaque action de l'animateur.
-const history = [];
-const snapshot = () => ({
-  teams: [...teams.values()].map(({ id, name, score }) => ({ id, name, score })),
-  round: { phase: round.phase, buzzes: round.buzzes.map((b) => ({ ...b })), excluded: [...round.excluded], number: round.number },
-});
-function restore(s) {
-  // Les équipes arrivées depuis sont conservées. Une équipe retirée revient, sans téléphone connecté.
-  for (const t of s.teams) {
-    const cur = teams.get(t.id);
-    if (cur) cur.score = t.score;
-    else teams.set(t.id, { ...t, sockets: new Set() });
-  }
-  round.phase = s.round.phase;
-  round.buzzes = s.round.buzzes.map((b) => ({ ...b }));
-  round.excluded = new Set(s.round.excluded);
-  round.number = s.round.number;
-}
-
-function openRound({ newSong }) {
-  if (newSong) { round.excluded.clear(); round.number += 1; }
-  round.buzzes = [];
-  round.phase = 'open';
+  const { teams } = game.load(data);
+  console.log(`  ${teams} équipe(s) et leurs scores rechargés depuis ${path.basename(SCORES_FILE)}`);
 }
 
 // ---------- Sockets ----------
+const HOST_ACTIONS = ['open', 'close', 'correct', 'wrong', 'unexclude', 'score', 'kick', 'reset-scores'];
+
 io.on('connection', (socket) => {
   const { role, key } = socket.handshake.auth || {};
   const isHost = role === 'host' && key === HOST_KEY;
-  let myTeam = null;
 
   if (isHost) {
     socket.join('hosts');
     socket.emit('info', { ips: lanAddresses(), port: PORT });
   }
-  socket.emit('state', publicState());
+  socket.emit('state', game.publicState({ role: 'host' }));
 
   // --- Joueurs ---
   socket.on('join', (rawName, ack = () => {}) => {
-    const name = cleanName(rawName);
-    if (!name) return ack({ ok: false, error: 'Donnez un nom d’équipe.' });
-    const id = teamIdOf(name);
-    if (myTeam && myTeam !== id) teams.get(myTeam)?.sockets.delete(socket.id);
-    if (!teams.has(id)) teams.set(id, { id, name, score: 0, sockets: new Set() });
-    teams.get(id).sockets.add(socket.id);
-    myTeam = id;
-    ack({ ok: true, teamId: id, name: teams.get(id).name });
-    broadcast();
+    const res = game.join(socket.id, rawName);
+    ack(res);
+    if (res.ok) broadcast();
   });
 
   socket.on('buzz', (ack = () => {}) => {
     const at = performance.now();                 // horodatage le plus tôt possible
-    if (!myTeam || !teams.has(myTeam)) return ack({ ok: false, reason: 'not-joined' });
-    if (round.phase === 'closed') return ack({ ok: false, reason: 'closed' });
-    if (round.excluded.has(myTeam)) return ack({ ok: false, reason: 'excluded' });
-    if (round.buzzes.some((b) => b.teamId === myTeam)) return ack({ ok: false, reason: 'already' });
-    round.buzzes.push({ teamId: myTeam, at });
-    const rank = round.buzzes.length;
-    if (rank === 1) round.phase = 'buzzed';
-    ack({ ok: true, rank });
-    broadcast();
+    const res = game.buzz(socket.id, at);
+    ack(res);
+    if (res.ok) broadcast();
   });
 
   // --- Hôte ---
-  // Chaque action qui change quelque chose est mémorisée pour pouvoir être annulée.
-  const hostOnly = (fn) => (...args) => {
-    if (!isHost) return;
-    const before = snapshot();
-    fn(...args);
-    if (JSON.stringify(before) !== JSON.stringify(snapshot())) {
-      history.push(before);
-      if (history.length > MAX_UNDO) history.shift();
-    }
-    broadcast();
-  };
-
+  for (const action of HOST_ACTIONS) {
+    socket.on(`host:${action}`, (payload) => {
+      if (!isHost) return;
+      const res = game.host(action, payload);
+      for (const sid of res.kickedSockets || []) io.sockets.sockets.get(sid)?.emit('kicked');
+      broadcast();
+    });
+  }
   socket.on('host:undo', () => {
-    if (!isHost || !history.length) return;
-    restore(history.pop());
+    if (!isHost || !game.undo()) return;
     broadcast();
   });
-  socket.on('host:open', hostOnly(() => openRound({ newSong: true })));     // nouveau morceau
-  socket.on('host:close', hostOnly(() => { round.phase = 'closed'; }));
-  socket.on('host:correct', hostOnly(() => {
-    if (round.phase !== 'buzzed') return;                                 // évite un double point (touche B pressée deux fois)
-    const first = round.buzzes[0];
-    if (first && teams.has(first.teamId)) teams.get(first.teamId).score += 1;
-    round.phase = 'closed';
-  }));
-  socket.on('host:wrong', hostOnly(() => {                                 // exclut et relance pour les autres
-    if (round.phase !== 'buzzed') return;
-    const first = round.buzzes[0];
-    if (first) round.excluded.add(first.teamId);
-    openRound({ newSong: false });
-  }));
-  socket.on('host:unexclude', hostOnly(({ teamId } = {}) => {              // rend le buzzer à une équipe exclue
-    round.excluded.delete(teamId);
-  }));
-  socket.on('host:score', hostOnly(({ teamId, delta } = {}) => {
-    const t = teams.get(teamId);
-    if (t && Number.isInteger(delta) && Math.abs(delta) <= 10) t.score += delta;
-  }));
-  socket.on('host:kick', hostOnly(({ teamId } = {}) => {
-    const t = teams.get(teamId);
-    if (!t) return;
-    for (const sid of t.sockets) io.sockets.sockets.get(sid)?.emit('kicked');
-    teams.delete(teamId);
-    round.buzzes = round.buzzes.filter((b) => b.teamId !== teamId);
-    round.excluded.delete(teamId);
-    if (!round.buzzes.length && round.phase === 'buzzed') round.phase = 'open';
-  }));
-  socket.on('host:reset-scores', hostOnly(() => { for (const t of teams.values()) t.score = 0; }));
 
   socket.on('disconnect', () => {
-    if (myTeam) teams.get(myTeam)?.sockets.delete(socket.id);
+    game.leave(socket.id);
     broadcast();
   });
 });

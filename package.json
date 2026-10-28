@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Buzzers sur téléphone pour blind test, arbitrage sur PC en réseau local",
   "main": "server.js",
-  "scripts": { "start": "node server.js" },
+  "scripts": { "start": "node server.js", "test": "node --test" },
   "engines": { "node": ">=18" },
   "dependencies": {
     "express": "4.21.2",
