@@ -9,10 +9,13 @@ const crypto = require('crypto');
 const QRCode = require('qrcode');
 const { Server } = require('socket.io');
 const { createGame } = require('./lib/game');
+const { decodeCsvBytes, parseCsv } = require('./lib/csv');
+const { buildSections, isSafeImageName } = require('./lib/game-file');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST_KEY = process.env.HOST_KEY || crypto.randomBytes(3).toString('hex');
 const SCORES_FILE = process.env.SCORES_FILE || path.join(__dirname, 'scores.json');
+const IMAGES_DIR = process.env.IMAGES_DIR || path.join(__dirname, 'images');
 
 const app = express();
 const server = http.createServer(app);
@@ -45,6 +48,7 @@ app.get('/qr.svg', async (req, res) => {
   const svg = await QRCode.toString(`http://${ip}:${PORT}/`, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
   res.type('image/svg+xml').send(svg);
 });
+app.use('/images', express.static(IMAGES_DIR, { dotfiles: 'deny', index: false }));
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 // ---------- Jeu ----------
@@ -91,7 +95,8 @@ function loadScores() {
 }
 
 // ---------- Sockets ----------
-const HOST_ACTIONS = ['open', 'close', 'correct', 'wrong', 'unexclude', 'score', 'kick', 'reset-scores', 'stage', 'join-ip'];
+const HOST_ACTIONS = ['open', 'close', 'correct', 'wrong', 'unexclude', 'score', 'kick', 'reset-scores', 'stage', 'join-ip', 'section'];
+const imageExists = (name) => isSafeImageName(name) && fs.existsSync(path.join(IMAGES_DIR, name));
 
 io.on('connection', (socket) => {
   const { role, key } = socket.handshake.auth || {};
@@ -133,6 +138,17 @@ io.on('connection', (socket) => {
       broadcast();
     });
   }
+  // Import du fichier de partie : la Régie envoie les octets bruts, le serveur décode, vérifie et répond.
+  socket.on('host:import', (bytes, ack = () => {}) => {
+    if (!isHost || typeof ack !== 'function') return;
+    if (!Buffer.isBuffer(bytes) && !(bytes instanceof ArrayBuffer) && !ArrayBuffer.isView(bytes)) return ack({ ok: false, error: 'Fichier illisible.' });
+    const built = buildSections(parseCsv(decodeCsvBytes(bytes)), { imageExists });
+    if (!built.ok) return ack(built);
+    const res = game.host('import', { sections: built.sections });
+    if (res.error) return ack({ ok: false, error: res.error });
+    ack({ ok: true, count: built.sections.length });
+    broadcast();
+  });
   socket.on('host:undo', () => {
     if (!isHost || !game.undo()) return;
     broadcast();
