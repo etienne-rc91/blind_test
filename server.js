@@ -10,11 +10,12 @@ const QRCode = require('qrcode');
 const { Server } = require('socket.io');
 const { createGame } = require('./lib/game');
 const { isSafeImageName } = require('./lib/game-file');
-const { MUSIC_TYPES, VIDEO_TYPES, isSafeMusicName, isSafeVideoName } = require('./lib/songs');
+const { MUSIC_TYPES, VIDEO_TYPES, isSafeMusicName, isSafeVideoName, parseSource } = require('./lib/songs');
 const { saveStream } = require('./lib/upload');
 const { createPartiesStore, cleanPartieName } = require('./lib/parties');
 const { checkLiveEdit } = require('./lib/live-edit');
 const { createSpotify, UNREACHABLE } = require('./lib/spotify');
+const { createYoutube, UNREACHABLE: YOUTUBE_UNREACHABLE } = require('./lib/youtube');
 const { isLoopback, createScreenRegistry } = require('./lib/screens');
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -275,9 +276,11 @@ api.post('/parties/:name/play', (req, res) => {
   broadcast();
   // Vérification avant la soirée : on prévient sans bloquer.
   // Morceaux des manches buzzer et extraits des questions QCM.
-  const hasSpotify = r.sections.some((s) => (s.songs || []).some((x) => x.source === 'spotify')
-    || (s.questions || []).some((q) => q.extract?.source === 'spotify'));
-  const warnings = hasSpotify && !spotify.status().connected ? ['Cette partie contient des morceaux Spotify, mais Spotify n’est pas connecté.'] : [];
+  const uses = (source) => r.sections.some((s) => (s.songs || []).some((x) => x.source === source)
+    || (s.questions || []).some((q) => q.extract?.source === source));
+  const warnings = [];
+  if (uses('spotify') && !spotify.status().connected) warnings.push('Cette partie contient des morceaux Spotify, mais Spotify n’est pas connecté.');
+  if (uses('youtube')) warnings.push('Cette partie contient des vidéos YouTube : une connexion internet est nécessaire.');
   res.json({ ok: true, warnings });
 });
 
@@ -357,6 +360,19 @@ api.get('/spotify/tracks/:id', async (req, res) => {
 api.post('/spotify/disconnect', (req, res) => {
   spotify.disconnect();
   res.json({ ok: true });
+});
+
+// YouTube : titre et miniature d’une vidéo (oEmbed public, sans clé). Une panne ne touche que la page Création.
+const youtube = createYoutube();
+api.get('/youtube/info', async (req, res) => {
+  const parsed = parseSource(typeof req.query.link === 'string' ? req.query.link : '');
+  if (!parsed || parsed.source !== 'youtube') return res.status(400).json({ error: 'Lien YouTube invalide.' });
+  try {
+    res.json(await youtube.info(parsed.ref));
+  } catch (e) {
+    if (!e.status) console.warn('  Erreur YouTube :', e.message);
+    res.status(e.status || 503).json({ error: e.status ? e.message : YOUTUBE_UNREACHABLE });
+  }
 });
 
 api.use((err, req, res, next) => {   // corps trop gros ou JSON illisible

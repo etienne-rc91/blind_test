@@ -318,6 +318,26 @@ test('play warns when a qcm extract uses spotify and spotify is not connected', 
   assert.deepEqual(r, { status: 200, body: { ok: true, warnings: ['Cette partie contient des morceaux Spotify, mais Spotify n’est pas connecté.'] } });
 });
 
+test('youtube info refuses a bad link', async () => {
+  for (const link of ['', 'pas un lien', 'https://example.com/watch?v=dQw4w9WgXcQ', 'youtube:trop-court', 'https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC']) {
+    const r = await json(await api('GET', `/api/youtube/info?link=${enc(link)}`));
+    assert.deepEqual(r, { status: 400, body: { error: 'Lien YouTube invalide.' } });
+  }
+  assert.equal((await api('GET', '/api/youtube/info?link=youtube:dQw4w9WgXcQ', null, { key: null })).status, 403);
+});
+
+test('play warns about youtube', async () => {
+  const song = { source: 'youtube', ref: 'dQw4w9WgXcQ', start: 0, end: 20, answer: 'Never Gonna Give You Up' };
+  const extract = { source: 'youtube', ref: 'dQw4w9WgXcQ', start: 0, end: 20 };
+  const text = 'Cette partie contient des vidéos YouTube : une connexion internet est nécessaire.';
+  await api('PUT', '/api/parties/AvecYoutube', { sections: [{ name: 'Clips', type: 'buzzer', questions: [], songs: [song] }], overwrite: false });
+  let r = await json(await api('POST', '/api/parties/AvecYoutube/play', { confirm: true }));
+  assert.deepEqual(r, { status: 200, body: { ok: true, warnings: [text] } });
+  await api('PUT', '/api/parties/ExtraitYoutube', { sections: [{ name: 'Clips', type: 'qcm', questions: [{ ...Q('Quel film ?'), extract }] }], overwrite: false });
+  r = await json(await api('POST', '/api/parties/ExtraitYoutube/play', { confirm: true }));
+  assert.deepEqual(r, { status: 200, body: { ok: true, warnings: [text] } });
+});
+
 test('only the loopback screen reads', async () => {
   fs.mkdirSync(DIRS.videos, { recursive: true });
   fs.writeFileSync(path.join(DIRS.videos, 'clip.mp4'), 'x');
