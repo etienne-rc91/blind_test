@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buzzer : parties</title>
+<style>
+  :root {
+    --bg: #eef0f7; --panel: #ffffff; --ink: #16204a; --muted: #5b6386; --line: #d3d7e8;
+    --red: #d7263d; --gold: #f2b705; --green: #1f9d63; --orange: #c46a00;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e1430; --panel: #161e44; --ink: #eef0f7; --muted: #98a0c4; --line: #2b3360; --orange: #f0a347; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif; font-size: 18px; }
+  /* Tient dans la fenêtre : seule la liste défile. */
+  .wrap { height: 100vh; display: flex; flex-direction: column; gap: 14px; padding: 16px; max-width: 1200px; margin: 0 auto; }
+  header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  header h1 { font-size: 1.8rem; margin: 0 auto 0 0; }
+  a.btn, button { font: inherit; font-size: .95rem; font-weight: 700; padding: 8px 14px; border-radius: 10px; border: 2px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; text-decoration: none; white-space: nowrap; }
+  .primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .danger { color: var(--red); }
+  button:disabled { opacity: .4; cursor: default; }
+  button:focus-visible, a.btn:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+  #msg { margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--panel); border: 2px solid var(--line); }
+  #msg:empty { display: none; }
+  #msg.err { border-color: var(--red); color: var(--red); }
+  #msg.ok { border-color: var(--green); color: var(--green); }
+  #list { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  #list li { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 12px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+  #list li.current { border-color: var(--green); }
+  .name { font-size: 1.3rem; font-weight: 800; overflow-wrap: anywhere; }
+  .badge { font-size: .75rem; font-weight: 700; border-radius: 999px; padding: 2px 8px; margin-left: 8px; vertical-align: middle; color: #fff; }
+  .badge.cur { background: var(--green); }
+  .badge.inc { background: var(--orange); }
+  .badge.err { background: var(--red); }
+  .meta { color: var(--muted); font-size: .95rem; margin-top: 2px; overflow-wrap: anywhere; }
+  details { margin-top: 4px; color: var(--orange); font-size: .9rem; }
+  details ul { margin: 4px 0 0; padding-left: 1.2em; }
+  .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .rename { font: inherit; font-size: 1.2rem; font-weight: 800; padding: 2px 6px; border: 2px solid var(--ink); border-radius: 8px; background: var(--bg); color: var(--ink); width: min(100%, 24ch); }
+  .empty { color: var(--muted); text-align: center; margin-top: 40px; }
+  @media (max-width: 700px) { #list li { grid-template-columns: 1fr; } .acts { justify-content: flex-start; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Parties</h1>
+    <a class="btn" id="back">← Régie</a>
+    <button id="importBtn">Importer un fichier CSV</button>
+    <input type="file" id="importFile" accept=".csv,text/csv" hidden>
+    <a class="btn primary" id="newBtn">+ Nouvelle partie</a>
+  </header>
+  <p id="msg" role="status"></p>
+  <ul id="list" aria-label="Parties disponibles"></ul>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const key = new URLSearchParams(location.search).get('key') || '';
+const q = (name) => encodeURIComponent(name);
+$('back').href = `/host?key=${q(key)}`;
+$('newBtn').href = `/creation?key=${q(key)}`;
+
+async function api(method, route, body, raw) {
+  const res = await fetch(`/api${route}`, {
+    method,
+    headers: { 'x-host-key': key, ...(body && !raw ? { 'content-type': 'application/json' } : {}) },
+    body: body ? (raw ? body : JSON.stringify(body)) : undefined,
+  });
+  const data = await res.json().catch(() => ({ error: 'Réponse illisible du serveur.' }));
+  if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+  return data;
+}
+function say(text, kind = 'ok') { $('msg').className = kind; $('msg').textContent = text; }
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const btn = (label, cls, fn) => { const b = el('button', cls, label); b.onclick = fn; return b; };
+const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
+
+let data = null;
+async function load() {
+  try { data = await api('GET', '/parties'); render(); }
+  catch (e) { say(e.message, 'err'); }
+}
+
+function render() {
+  const ul = $('list'); ul.innerHTML = '';
+  if (!data.parties.length) {
+    ul.append(el('li', 'empty', 'Aucune partie pour l’instant. Créez-en une ou importez un fichier CSV.'));
+    return;
+  }
+  const curKey = data.current?.normalize('NFC').toLowerCase();
+  for (const p of data.parties) {
+    const isCur = p.name.normalize('NFC').toLowerCase() === curKey;
+    const li = el('li', isCur ? 'current' : '');
+    const info = el('div');
+    const title = el('div', 'name', p.name);
+    if (isCur) title.append(el('span', 'badge cur', 'en cours'));
+    if (p.error) title.append(el('span', 'badge err', 'illisible'));
+    else if (p.problems.length) title.append(el('span', 'badge inc', 'incomplète'));
+    info.append(title);
+    const date = new Date(p.mtime).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+    const summary = p.error ? p.error
+      : p.sections.length ? `${plural(p.sections.length, 'manche')} · ${p.sections.map((s) => (s.type === 'qcm' ? `${s.name} (QCM · ${s.questionCount})` : s.name)).join(', ')}`
+      : 'Aucune manche';
+    info.append(el('div', 'meta', `${summary} · modifiée le ${date}`));
+    if (p.problems.length) {
+      const d = el('details');
+      d.append(el('summary', null, `À compléter (${p.problems.length})`));
+      const list = el('ul');
+      for (const pb of p.problems) list.append(el('li', null, pb));
+      d.append(list);
+      info.append(d);
+    }
+
+    const acts = el('div', 'acts');
+    if (!isCur) {
+      const playBtn = btn('Jouer', 'primary', () => play(p.name));
+      playBtn.disabled = !!p.error || p.problems.length > 0;
+      if (playBtn.disabled) playBtn.title = 'Partie incomplète : complétez-la avant de la jouer.';
+      acts.append(playBtn);
+    }
+    const edit = el('a', 'btn', 'Modifier');
+    edit.href = `/creation?key=${q(key)}&partie=${q(p.name)}`;
+    acts.append(edit, btn('Renommer', '', () => startRename(title, p.name)), btn('Supprimer', 'danger', () => remove(p.name)));
+    li.append(info, acts);
+    ul.append(li);
+  }
+}
+
+async function play(name) {
+  if (data.teamCount > 0 && !confirm(`Commencer une nouvelle soirée avec « ${name} » ? Les équipes et les scores actuels seront effacés.`)) return;
+  try { await api('POST', `/parties/${q(name)}/play`); say(`« ${name} » est prête : nouvelle soirée lancée. Les équipes peuvent rejoindre.`); await load(); }
+  catch (e) { say(e.message, 'err'); }
+}
+
+async function remove(name) {
+  if (!confirm(`Supprimer définitivement la partie « ${name} » ?`)) return;
+  try { await api('DELETE', `/parties/${q(name)}`); say(`« ${name} » supprimée.`); await load(); }
+  catch (e) { say(e.message, 'err'); }
+}
+
+// Renommer sur place : Entrée valide, Échap annule.
+function startRename(title, name) {
+  const input = el('input', 'rename');
+  input.value = name;
+  title.replaceWith(input);
+  input.focus(); input.select();
+  let done = false;
+  const finish = async (save) => {
+    if (done) return; done = true;
+    const to = input.value.trim();
+    if (!save || !to || to === name) return render();
+    try { await api('POST', `/parties/${q(name)}/rename`, { to }); say(`« ${name} » renommée en « ${to} ».`); await load(); }
+    catch (e) { say(e.message, 'err'); render(); }
+  };
+  input.onkeydown = (e) => { if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') finish(false); };
+  input.onblur = () => finish(true);
+}
+
+$('importBtn').onclick = () => $('importFile').click();
+$('importFile').onchange = async () => {
+  const file = $('importFile').files[0];
+  $('importFile').value = '';
+  if (!file) return;
+  const name = prompt('Nom de la partie importée :', file.name.replace(/\.csv$/i, ''));
+  if (!name) return;
+  try {
+    const r = await api('POST', `/parties-import?name=${q(name)}`, await file.arrayBuffer(), true);
+    say(r.problems.length ? `« ${r.name} » importée, mais incomplète : ${r.problems.length} point(s) à compléter.` : `« ${r.name} » importée.`);
+    await load();
+  } catch (e) { say(e.message, 'err'); }
+};
+
+load();
+</script>
+</body>
+</html>

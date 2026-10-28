@@ -50,6 +50,7 @@ test('api requires the host key', async () => {
   assert.equal((await api('GET', '/api/parties', null, { key: 'mauvaise' })).status, 403);
   assert.equal((await fetch(`${base}/creation`)).status, 403);
   assert.equal((await fetch(`${base}/parties?key=mauvaise`)).status, 403);
+  assert.equal((await fetch(`${base}/parties?key=${KEY}`)).status, 200);
 });
 
 test('save, list, read, rename and delete a partie', async () => {

@@ -110,11 +110,9 @@
   #sections li .type { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; margin-left: 6px; color: var(--muted); font-weight: 400; }
   .nav { display: flex; gap: 6px; }
   .nav button { font: inherit; font-size: .9rem; font-weight: 700; padding: 4px 10px; border-radius: 10px; border: 2px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
-  #importMsg { font-size: .85rem; margin: 4px 0 0; }
-  #importMsg:empty { display: none; }
+  #partie { margin: 0 0 6px; font-size: .95rem; color: var(--muted); overflow-wrap: anywhere; }
+  #partie b { color: var(--ink); }
   .small.inline { padding: 0; }
-  #importMsg.err { color: var(--red); }
-  #importMsg.ok { color: var(--green); }
 </style>
 </head>
 <body>
@@ -161,13 +159,12 @@
           <button id="nextSection" title="Manche suivante" aria-label="Manche suivante">Suivante ▶</button>
         </div>
       </div>
+      <p id="partie"></p>
       <ol id="sections"></ol>
       <div class="row">
-        <button class="small inline" id="importBtn" title="Importer les manches depuis un fichier CSV">Importer (CSV)</button>
+        <a class="small inline" id="partiesLink" title="Choisir, préparer ou modifier une partie">Parties</a>
         <label class="cd" title="Durée du compte à rebours des questions QCM">Compte à rebours QCM <input type="number" id="cdSec" min="5" max="120" step="1"> s</label>
       </div>
-      <input type="file" id="importFile" accept=".csv,text/csv" hidden>
-      <p id="importMsg" role="status"></p>
     </div>
     <div class="card" id="teamsCard">
       <h2>Équipes</h2>
@@ -213,18 +210,7 @@ $('bClose').onclick = () => act('host:close');
 $('bUndo').onclick = () => act('host:undo');
 $('prevSection').onclick = () => act('host:section', { index: state.currentSection - 1 });
 $('nextSection').onclick = () => act('host:section', { index: state.currentSection + 1 });
-$('importBtn').onclick = () => $('importFile').click();
-$('importFile').onchange = async () => {
-  const file = $('importFile').files[0];
-  $('importFile').value = '';                    // permet de réimporter le même fichier après correction
-  if (!file) return;
-  const msg = $('importMsg');
-  msg.className = ''; msg.textContent = 'Import en cours…';
-  socket.emit('host:import', await file.arrayBuffer(), (res) => {
-    msg.className = res?.ok ? 'ok' : 'err';
-    msg.textContent = res?.ok ? `${res.count} manche${res.count > 1 ? 's' : ''} importée${res.count > 1 ? 's' : ''} depuis « ${file.name} ».` : (res?.error || 'Import impossible.');
-  });
-};
+$('partiesLink').href = `/parties?key=${encodeURIComponent(key)}`;
 for (const b of document.querySelectorAll('[data-stage]')) b.onclick = () => act('host:stage', { stage: b.dataset.stage });
 $('resetScores').onclick = () => { if (confirm('Remettre tous les scores à zéro ?')) act('host:reset-scores'); };
 // ----- QCM -----
@@ -366,6 +352,9 @@ function render() {
   $('bOk').disabled = $('bKo').disabled = state.phase !== 'buzzed';
   $('bClose').disabled = state.phase === 'closed';
   $('bUndo').disabled = !state.canUndo;
+  const pn = $('partie'); pn.innerHTML = '';
+  if (state.partieName) { pn.append('Partie : '); const b = document.createElement('b'); b.textContent = state.partieName; pn.append(b); }
+  else pn.textContent = 'Aucune partie choisie';
   const sl = $('sections'); sl.innerHTML = '';
   state.sections.forEach((sec, i) => {
     const li = document.createElement('li');

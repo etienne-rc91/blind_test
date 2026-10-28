@@ -10,20 +10,25 @@ Les téléphones servent de buzzers et le PC arbitre. Aucune dépendance à inte
 
 La console affiche l'URL joueur, l'URL de la Régie (`/host?key=…`) et celle du Grand écran (`/screen`). Ouvrez la Régie et le Grand écran sur le PC ; les joueurs scannent le QR code affiché sur le Grand écran (étape Installation). La Régie rappelle l'adresse à taper dans le bloc « Rejoindre ».
 
-## Préparer la soirée (manches)
-Une soirée se découpe en manches (« Cinéma », « Années 80 »…). Les points sont comptés par manche et le Bilan les affiche côte à côte.
+## Préparer la soirée (parties)
+Une **partie** est une soirée préparée : ses manches (« Cinéma », « Années 80 »…) et, pour les manches QCM, leurs questions. Chaque partie est un fichier CSV du dossier `parties/`, à côté du serveur. Les points sont comptés par manche et le Bilan les affiche côte à côte.
 
-1. Préparez un fichier CSV (Excel : « Enregistrer sous » → CSV, en UTF-8 ou non, séparateur `;` ou `,`). Partez de `exemple-soiree.csv`.
-2. Première ligne obligatoire : `manche;type;question;image;A;B;C;D;reponse`.
-3. Une manche **buzzer** tient sur une ligne : son nom et `buzzer`, le reste vide. L'ordre des lignes est l'ordre de la soirée.
-   Une manche **QCM** a une ligne par question, avec le même nom de manche sur chaque ligne : `question` (texte) et/ou `image`, les propositions `A` à `D`, et la bonne réponse dans `reponse` (A, B, C ou D). Exemple :
-   `Culture G;qcm;Qui est cet acteur ?;acteur1.jpg;Brad Pitt;Tom Cruise;Johnny Depp;Keanu Reeves;C`
-4. Dans la Régie, bloc « Manches » : « Importer (CSV) ». En cas d'erreur, le message indique la ligne à corriger ; corrigez et réimportez.
-5. Pendant la soirée, « Suivante ▶ » passe à la manche suivante (les buzzers se ferment). Les points donnés vont dans la manche en cours.
+**Page Parties** (lien « Parties » dans le bloc « Manches » de la Régie) :
+- la liste des parties, avec leurs manches et la date de modification ; la partie en cours est marquée « en cours » ;
+- **Jouer** : commence une nouvelle soirée avec cette partie. Les équipes, les scores et l'avancement repartent de zéro, le Grand écran revient à l'Installation et les téléphones déjà connectés doivent rejoindre à nouveau ;
+- **Modifier** (ouvre la page Création), **Renommer**, **Supprimer** (la partie en cours ne peut pas être supprimée) ;
+- **+ Nouvelle partie** et **Importer un fichier CSV** (une partie préparée dans Excel).
 
-Sans fichier, la soirée se joue avec une seule manche, « Manche 1 », comme avant.
-Réimporter un fichier est refusé dès qu'un point a été donné : utilisez d'abord « Remettre les scores à zéro » (qui revient aussi à la première manche).
-Les images des questions QCM se placent dans le dossier `images/`, à côté du serveur ; la colonne `image` contient seulement le nom du fichier (pas d'adresse web : il n'y a pas internet en salle). L'import vérifie que chaque image existe.
+Une partie **incomplète** (question sans proposition, sans bonne réponse, image introuvable, manche QCM sans question…) peut être enregistrée pour être terminée plus tard : elle est marquée « incomplète », avec ce qui manque, et ne peut pas être jouée.
+
+Pendant la soirée, « Suivante ▶ » passe à la manche suivante (les buzzers se ferment). Les points donnés vont dans la manche en cours. Sans partie choisie, la soirée se joue avec une seule manche, « Manche 1 ».
+
+**Format CSV (pour Excel)** : on peut aussi préparer une partie dans Excel (« Enregistrer sous » → CSV, UTF-8 ou non, séparateur `;` ou `,`) puis l'importer, ou déposer le fichier directement dans `parties/`. Partez de `exemple-soiree.csv`.
+- Première ligne obligatoire : `manche;type;question;image;A;B;C;D;reponse`.
+- Une manche **buzzer** tient sur une ligne : son nom et `buzzer`, le reste vide. L'ordre des lignes est l'ordre de la soirée.
+- Une manche **QCM** a une ligne par question, avec le même nom de manche sur chaque ligne : `question` (texte) et/ou `image`, les propositions `A` à `D`, et la bonne réponse dans `reponse` (A, B, C ou D). Exemple :
+  `Culture G;qcm;Qui est cet acteur ?;acteur1.jpg;Brad Pitt;Tom Cruise;Johnny Depp;Keanu Reeves;C`
+- Les images se placent dans le dossier `images/` ; la colonne `image` contient seulement le nom du fichier (pas d'adresse web : il n'y a pas internet en salle).
 
 ## Manches QCM
 Toutes les équipes répondent en même temps, A, B, C ou D, sur leur Buzzer (seules les lettres y apparaissent ; les propositions sont sur le Grand écran). 1 point par bonne réponse.
