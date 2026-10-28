@@ -512,6 +512,9 @@ async function refreshSpotify() {
   } catch { spotifyStatus = null; }
   renderSpotify(); warmSpotify();
 }
+// Retour sur la Régie (après une connexion Spotify dans un autre onglet, par exemple) : on relit l’état,
+// et warmSpotify démarre l’appareil s’il vient d’être connecté.
+addEventListener('focus', () => { if (state && sectionHasSpotify()) refreshSpotify(); });
 // Démarre l’appareil Spotify avant le premier Espace : le lancement du morceau sera plus rapide.
 function warmSpotify() {
   if (!soundMine || !sectionHasSpotify() || !spotifyStatus?.connected) return;
