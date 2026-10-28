@@ -61,13 +61,13 @@ Conception détaillée : `docs/superpowers/specs/2026-10-28-grand-ecran-manches-
 
 ```
 buzzer/
-├── server.js            Serveur : routes Express, API /api (parties, images, musiques, spotify), sockets, sauvegarde, Régie qui joue le son
+├── server.js            Serveur : routes Express, API /api (parties, images, musiques, vidéos, youtube, spotify), sockets, sauvegarde, Régie qui joue le son
 ├── lib/
 │   ├── game.js          État du jeu et règles (manches, QCM, annulation, nouvelle soirée), sans réseau
 │   ├── songs.js         Morceaux d’une manche buzzer : fichiers audio, Début/Fin, validation
 │   ├── spotify.js       Connexion Spotify (PKCE), recherche, jetons (spotify.json)
 │   ├── youtube.js       Liens YouTube : identifiant, titre et miniature (oEmbed)
-│   ├── upload.js        Réception des fichiers (audio, image, vidéo) écrits en flux sur le disque
+│   ├── upload.js        Réception des fichiers vidéo, écrits en flux sur le disque (jamais en mémoire)
 │   ├── screens.js       Grand écran qui lit : le dernier /screen ouvert sur le PC du serveur
 │   ├── ranking.js       Classement dense et podium
 │   ├── csv.js           Décodage (UTF-8 / Windows-1252) et parsing CSV
