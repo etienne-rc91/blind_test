@@ -21,7 +21,7 @@ test.before(async () => {
   const port = await freePort();
   base = `http://localhost:${port}`;
   child = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
-    env: { ...process.env, PORT: String(port), HOST_KEY: KEY, SCORES_FILE: path.join(tmp, 'scores.json'), IMAGES_DIR: DIRS.images, MUSIQUES_DIR: DIRS.musiques, PARTIES_DIR: DIRS.parties },
+    env: { ...process.env, PORT: String(port), HOST_KEY: KEY, SCORES_FILE: path.join(tmp, 'scores.json'), IMAGES_DIR: DIRS.images, MUSIQUES_DIR: DIRS.musiques, PARTIES_DIR: DIRS.parties, SPOTIFY_FILE: path.join(tmp, 'spotify.json'), SPOTIFY_CLIENT_ID: '' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   await new Promise((resolve, reject) => {
@@ -82,7 +82,7 @@ test('play starts a new evening and refuses an incomplete partie', async () => {
   assert.equal(r.status, 422);
   await api('PUT', '/api/parties/Jouable', { sections: SECTIONS, overwrite: false });
   r = await json(await api('POST', '/api/parties/Jouable/play'));
-  assert.deepEqual(r, { status: 200, body: { ok: true } });
+  assert.deepEqual(r, { status: 200, body: { ok: true, warnings: [] } });
   r = await json(await api('GET', '/api/parties'));
   assert.equal(r.body.current, 'Jouable');
 });
@@ -205,4 +205,63 @@ test('music upload: refused extension, empty body, missing host key', async () =
   assert.equal(r.body.error, 'Morceau vide.');
   r = await api('POST', '/api/musiques?filename=c.mp3', Buffer.from('x'), { raw: true, key: null });
   assert.equal(r.status, 403);
+});
+
+// ---------- Spotify (sans réseau : seules les routes qui ne contactent pas Spotify) ----------
+const SPOTIFY_CLIENT = '0123456789abcdef0123456789abcdef';
+
+test('spotify status without configuration', async () => {
+  const r = await json(await api('GET', '/api/spotify/status'));
+  assert.deepEqual(r, { status: 200, body: { configured: false, connected: false } });
+  assert.equal((await api('GET', '/api/spotify/status', null, { key: null })).status, 403);
+  const login = await fetch(`${base}/spotify/login?key=${KEY}`, { redirect: 'manual' });
+  assert.equal(login.status, 400);
+});
+
+test('spotify client id is validated', async () => {
+  let r = await json(await api('POST', '/api/spotify/client-id', { clientId: 'abc' }));
+  assert.deepEqual(r, { status: 400, body: { error: 'Client ID invalide (32 caractères hexadécimaux).' } });
+  r = await json(await api('POST', '/api/spotify/client-id', {}));
+  assert.equal(r.status, 400);
+  r = await json(await api('POST', '/api/spotify/client-id', { clientId: SPOTIFY_CLIENT }));
+  assert.deepEqual(r, { status: 200, body: { ok: true, configured: true, connected: false } });
+  assert.deepEqual((await json(await api('GET', '/api/spotify/status'))).body, { configured: true, connected: false });
+});
+
+test('spotify login redirects to the authorization page', async () => {
+  assert.equal((await fetch(`${base}/spotify/login`, { redirect: 'manual' })).status, 403);
+  assert.equal((await fetch(`${base}/spotify/login?key=mauvaise`, { redirect: 'manual' })).status, 403);
+  const res = await fetch(`${base}/spotify/login?key=${KEY}&back=creation`, { redirect: 'manual' });
+  assert.equal(res.status, 302);
+  const to = new URL(res.headers.get('location'));
+  assert.equal(to.origin + to.pathname, 'https://accounts.spotify.com/authorize');
+  assert.equal(to.searchParams.get('code_challenge_method'), 'S256');
+  assert.equal(to.searchParams.get('client_id'), SPOTIFY_CLIENT);
+  assert.match(to.searchParams.get('redirect_uri'), /^http:\/\/127\.0\.0\.1:\d+\/spotify\/callback$/);
+});
+
+test('spotify callback with an unknown state is refused without leaking the key', async () => {
+  const res = await fetch(`${base}/spotify/callback?code=x&state=inconnu`, { redirect: 'manual' });
+  assert.equal(res.status, 400);
+  const html = await res.text();
+  assert.match(html, /relancez/);
+  assert.ok(!html.includes(KEY));
+});
+
+test('spotify routes refuse when not connected', async () => {
+  let r = await json(await api('GET', '/api/spotify/token'));
+  assert.deepEqual(r, { status: 401, body: { error: 'Spotify n’est pas connecté.' } });
+  r = await json(await api('GET', '/api/spotify/search?q=africa'));
+  assert.equal(r.status, 401);
+  r = await json(await api('GET', '/api/spotify/tracks/pas-un-id'));
+  assert.equal(r.status, 400);
+  r = await json(await api('POST', '/api/spotify/disconnect'));
+  assert.deepEqual(r, { status: 200, body: { ok: true } });
+});
+
+test('play warns when the partie has spotify songs and spotify is not connected', async () => {
+  const withSpotify = [{ name: 'Années 80', type: 'buzzer', questions: [], songs: [{ source: 'spotify', ref: '4uLU6hMCjMI75M1A2tKUQC', start: 0, end: 20, answer: 'Africa' }] }];
+  await api('PUT', '/api/parties/AvecSpotify', { sections: withSpotify, overwrite: false });
+  const r = await json(await api('POST', '/api/parties/AvecSpotify/play', { confirm: true }));
+  assert.deepEqual(r, { status: 200, body: { ok: true, warnings: ['Cette partie contient des morceaux Spotify, mais Spotify n’est pas connecté.'] } });
 });

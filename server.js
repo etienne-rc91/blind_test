@@ -13,6 +13,7 @@ const { isSafeImageName } = require('./lib/game-file');
 const { MUSIC_TYPES, isSafeMusicName } = require('./lib/songs');
 const { createPartiesStore, cleanPartieName } = require('./lib/parties');
 const { checkLiveEdit } = require('./lib/live-edit');
+const { createSpotify, UNREACHABLE } = require('./lib/spotify');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST_KEY = process.env.HOST_KEY || crypto.randomBytes(3).toString('hex');
@@ -20,6 +21,7 @@ const SCORES_FILE = process.env.SCORES_FILE || path.join(__dirname, 'scores.json
 const IMAGES_DIR = process.env.IMAGES_DIR || path.join(__dirname, 'images');
 const PARTIES_DIR = process.env.PARTIES_DIR || path.join(__dirname, 'parties');
 const MUSIQUES_DIR = process.env.MUSIQUES_DIR || path.join(__dirname, 'musiques');
+const SPOTIFY_FILE = process.env.SPOTIFY_FILE || path.join(__dirname, 'spotify.json');
 const IMAGE_TYPES = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
 const MAX_IMAGE = 10 * 1024 * 1024;
 const MAX_MUSIC = 50 * 1024 * 1024;
@@ -55,6 +57,39 @@ for (const page of ['parties', 'creation']) {
     res.sendFile(path.join(__dirname, 'public', `${page}.html`));
   });
 }
+// ---------- Spotify (connexion OAuth PKCE) ----------
+// Spotify n’accepte en HTTP que l’IP de bouclage, pas « localhost » : la connexion se fait depuis ce PC.
+const spotify = createSpotify({
+  file: SPOTIFY_FILE,
+  redirectUri: `http://127.0.0.1:${PORT}/spotify/callback`,
+  clientId: process.env.SPOTIFY_CLIENT_ID || undefined,
+});
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+function spotifyErrorPage(res, message, link) {
+  res.status(400).type('html').send(`<!doctype html><html lang="fr"><meta charset="utf-8"><title>Spotify</title>
+<body style="font-family:system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem">
+<h1>Connexion à Spotify impossible</h1><p>${escapeHtml(message)}</p><p>${link}</p></body></html>`);
+}
+const backLink = (back) => `<a href="/${back}?key=${encodeURIComponent(HOST_KEY)}">Revenir</a>`;
+app.get('/spotify/login', (req, res) => {
+  if (req.query.key !== HOST_KEY) return res.status(403).send('Clé hôte invalide. Elle est affichée dans la console du serveur.');
+  const back = req.query.back === 'creation' ? 'creation' : 'host';
+  const url = spotify.authUrl({ back });
+  if (!url) return spotifyErrorPage(res, 'Aucun Client ID Spotify n’est configuré.', backLink(back));
+  res.redirect(url);
+});
+app.get('/spotify/callback', async (req, res) => {
+  const str = (v) => (typeof v === 'string' ? v : undefined);
+  try {
+    const r = await spotify.handleCallback({ code: str(req.query.code), state: str(req.query.state), error: str(req.query.error) });
+    if (r.ok) return res.redirect(`/${r.back}?key=${encodeURIComponent(HOST_KEY)}`);
+    // Sans state valide, on ne sait pas qui appelle : le lien de retour ne porte pas la clé hôte.
+    spotifyErrorPage(res, r.error, r.back ? backLink(r.back) : 'Rouvrez la Régie avec sa clé (affichée dans la console du serveur).');
+  } catch (e) {
+    console.error('  Erreur pendant la connexion Spotify :', e.message);
+    spotifyErrorPage(res, 'Erreur inattendue.', 'Rouvrez la Régie avec sa clé (affichée dans la console du serveur).');
+  }
+});
 app.get('/screen', (req, res) => res.sendFile(path.join(__dirname, 'public', 'screen.html')));
 app.get('/qr.svg', async (req, res) => {
   const ip = String(req.query.ip || (lanAddresses()[0] || {}).ip || 'localhost');
@@ -67,7 +102,20 @@ app.use('/musiques', express.static(MUSIQUES_DIR, { dotfiles: 'deny', index: fal
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 // ---------- Jeu ----------
-const game = createGame({ onTimer: () => broadcast() });   // fin du compte à rebours QCM
+const game = createGame({
+  onTimer: () => broadcast(),   // fin du compte à rebours QCM
+  coverOf: (s) => spotify.cachedTrack(s.ref)?.cover ?? null,
+});
+// Pochette du morceau Spotify qui vient d’être lancé : demandée en tâche de fond, pour la révélation.
+// Une panne ne gêne pas le jeu : la révélation se fait alors sans pochette.
+function prefetchCover() {
+  const st = game.publicState({ role: 'host' }).song;
+  const cur = st && st.index !== null && !st.concluded ? st.songs[st.index] : null;
+  if (!cur || cur.source !== 'spotify' || spotify.cachedTrack(cur.ref) || !spotify.status().connected) return;
+  spotify.track(cur.ref)
+    .then((t) => { if (t) broadcast(); })
+    .catch((e) => console.warn('  Pochette Spotify indisponible :', e.message));
+}
 // Chaque rôle reçoit son propre état : le Grand écran et les Buzzers ne voient jamais les secrets de la Régie.
 function broadcast() {
   io.to('hosts').emit('state', game.publicState({ role: 'host' }));
@@ -195,7 +243,10 @@ api.post('/parties/:name/play', (req, res) => {
     if (sock) { sock.data.teamId = null; sock.emit('kicked'); }
   }
   broadcast();
-  res.json({ ok: true });
+  // Vérification avant la soirée : on prévient sans bloquer.
+  const hasSpotify = r.sections.some((s) => (s.songs || []).some((x) => x.source === 'spotify'));
+  const warnings = hasSpotify && !spotify.status().connected ? ['Cette partie contient des morceaux Spotify, mais Spotify n’est pas connecté.'] : [];
+  res.json({ ok: true, warnings });
 });
 
 const rawBody = (limit) => express.raw({ type: () => true, limit });
@@ -223,6 +274,40 @@ api.post('/images', rawBody(MAX_IMAGE), (req, res) => saveUpload(req, res, {
 api.post('/musiques', rawBody(MAX_MUSIC), (req, res) => saveUpload(req, res, {
   dir: MUSIQUES_DIR, types: MUSIC_TYPES, badType: 'Format audio non accepté (mp3, m4a, aac, ogg, wav ou flac).', empty: 'Morceau vide.',
 }));
+
+// Spotify : la recherche passe par le serveur ; la page ne reçoit que des jetons d’accès courts.
+const SPOTIFY_TRACK_ID = /^[0-9A-Za-z]{22}$/;
+function spotifyFail(res, e) {
+  if (!e.status) console.warn('  Erreur Spotify :', e.message);
+  res.status(e.status || 503).json({ error: e.status ? e.message : UNREACHABLE });
+}
+api.get('/spotify/status', (req, res) => res.json(spotify.status()));
+api.post('/spotify/client-id', (req, res) => {
+  if (!spotify.setClientId(req.body?.clientId)) return res.status(400).json({ error: 'Client ID invalide (32 caractères hexadécimaux).' });
+  res.json({ ok: true, ...spotify.status() });
+});
+api.get('/spotify/token', async (req, res) => {
+  try {
+    const accessToken = await spotify.accessToken();
+    if (!accessToken) return res.status(401).json({ error: 'Spotify n’est pas connecté.' });
+    res.set('Cache-Control', 'no-store').json({ accessToken });
+  } catch (e) { spotifyFail(res, e); }
+});
+api.get('/spotify/search', async (req, res) => {
+  const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '';
+  try { res.json({ tracks: await spotify.search(q) }); } catch (e) { spotifyFail(res, e); }
+});
+api.get('/spotify/tracks/:id', async (req, res) => {
+  if (!SPOTIFY_TRACK_ID.test(req.params.id)) return res.status(400).json({ error: 'Identifiant Spotify invalide.' });
+  try {
+    const t = await spotify.track(req.params.id);
+    return t ? res.json(t) : res.status(404).json({ error: 'Titre introuvable sur Spotify.' });
+  } catch (e) { spotifyFail(res, e); }
+});
+api.post('/spotify/disconnect', (req, res) => {
+  spotify.disconnect();
+  res.json({ ok: true });
+});
 
 api.use((err, req, res, next) => {   // corps trop gros ou JSON illisible
   if (err.type === 'entity.too.large') {
@@ -301,6 +386,7 @@ io.on('connection', (socket) => {
       if (!isHost) return;
       claimSound(socket.id);
       const res = game.host(action, payload);
+      if (action === 'open') prefetchCover();
       for (const sid of res.kickedSockets || []) {
         const sock = io.sockets.sockets.get(sid);
         if (sock) { sock.data.teamId = null; sock.emit('kicked'); }
@@ -352,4 +438,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('\n  Sur ce PC :');
   console.log(`    Régie       : http://localhost:${PORT}/host?key=${HOST_KEY}`);
   console.log(`    Grand écran : http://localhost:${PORT}/screen   (fenêtre à glisser sur le projecteur)\n`);
+  const sp = spotify.status();
+  console.log(`  Spotify : ${sp.connected ? 'connecté' : sp.configured ? 'non connecté' : 'non configuré'}\n`);
 });
