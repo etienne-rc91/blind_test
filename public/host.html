@@ -71,6 +71,15 @@
   .stages button[aria-checked="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
   .hint { font-size: .9rem; color: var(--muted); margin: 10px 0 0; }
   .hint a { color: inherit; }
+  #sections { margin: 0 0 10px; padding-left: 1.6em; }
+  #sections li { padding: 3px 0; color: var(--muted); }
+  #sections li.current { color: var(--ink); font-weight: 800; }
+  #sections li .type { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; margin-left: 6px; color: var(--muted); font-weight: 400; }
+  .nav { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .nav button { font: inherit; font-size: .95rem; font-weight: 700; padding: 8px 6px; border-radius: 10px; border: 2px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+  #importMsg { font-size: .9rem; margin: 6px 0 0; min-height: 1.2em; }
+  #importMsg.err { color: var(--red); }
+  #importMsg.ok { color: var(--green); }
 </style>
 </head>
 <body>
@@ -100,16 +109,27 @@
       <p class="hint">À ouvrir sur le projecteur : <a id="screenLink" href="/screen" target="_blank">/screen</a></p>
     </div>
     <div class="card">
-      <h2>Rejoindre la partie</h2>
-      <img id="qr" alt="QR code de la page joueur">
-      <p id="url"></p>
-      <select id="ipPick" aria-label="Interface réseau" hidden></select>
+      <h2>Manches</h2>
+      <ol id="sections"></ol>
+      <div class="nav">
+        <button id="prevSection" title="Manche précédente">◀ Précédente</button>
+        <button id="nextSection" title="Manche suivante">Suivante ▶</button>
+      </div>
+      <button class="small" id="importBtn">Importer les manches (CSV)</button>
+      <input type="file" id="importFile" accept=".csv,text/csv" hidden>
+      <p id="importMsg" role="status"></p>
     </div>
     <div class="card">
       <h2>Équipes</h2>
       <table><tbody id="teams"></tbody></table>
       <p class="empty" id="noTeam">Aucune équipe pour l’instant.</p>
       <button class="small" id="resetScores">Remettre les scores à zéro</button>
+    </div>
+    <div class="card">
+      <h2>Rejoindre la partie</h2>
+      <img id="qr" alt="QR code de la page joueur">
+      <p id="url"></p>
+      <select id="ipPick" aria-label="Interface réseau" hidden></select>
     </div>
   </aside>
 </div>
@@ -140,6 +160,20 @@ $('bOk').onclick = () => act('host:correct');
 $('bKo').onclick = () => act('host:wrong');
 $('bClose').onclick = () => act('host:close');
 $('bUndo').onclick = () => act('host:undo');
+$('prevSection').onclick = () => act('host:section', { index: state.currentSection - 1 });
+$('nextSection').onclick = () => act('host:section', { index: state.currentSection + 1 });
+$('importBtn').onclick = () => $('importFile').click();
+$('importFile').onchange = async () => {
+  const file = $('importFile').files[0];
+  $('importFile').value = '';                    // permet de réimporter le même fichier après correction
+  if (!file) return;
+  const msg = $('importMsg');
+  msg.className = ''; msg.textContent = 'Import en cours…';
+  socket.emit('host:import', await file.arrayBuffer(), (res) => {
+    msg.className = res?.ok ? 'ok' : 'err';
+    msg.textContent = res?.ok ? `${res.count} manche${res.count > 1 ? 's' : ''} importée${res.count > 1 ? 's' : ''} depuis « ${file.name} ».` : (res?.error || 'Import impossible.');
+  });
+};
 for (const b of document.querySelectorAll('[data-stage]')) b.onclick = () => act('host:stage', { stage: b.dataset.stage });
 $('resetScores').onclick = () => { if (confirm('Remettre tous les scores à zéro ?')) act('host:reset-scores'); };
 addEventListener('keydown', (e) => {
@@ -198,6 +232,18 @@ function render() {
   $('bOk').disabled = $('bKo').disabled = state.phase !== 'buzzed';
   $('bClose').disabled = state.phase === 'closed';
   $('bUndo').disabled = !state.canUndo;
+  const sl = $('sections'); sl.innerHTML = '';
+  state.sections.forEach((sec, i) => {
+    const li = document.createElement('li');
+    li.textContent = sec.name;
+    const ty = document.createElement('span'); ty.className = 'type';
+    ty.textContent = sec.type === 'qcm' ? `QCM · ${sec.questionCount} question${sec.questionCount > 1 ? 's' : ''}` : 'buzzer';
+    li.append(ty);
+    if (i === state.currentSection) li.className = 'current';
+    sl.append(li);
+  });
+  $('prevSection').disabled = state.currentSection === 0;
+  $('nextSection').disabled = state.currentSection >= state.sections.length - 1;
   for (const b of document.querySelectorAll('[data-stage]')) b.setAttribute('aria-checked', String(b.dataset.stage === state.stage));
 
   const ol = $('order'); ol.innerHTML = '';

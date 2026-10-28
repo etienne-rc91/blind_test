@@ -10,6 +10,19 @@ Les téléphones servent de buzzers et le PC arbitre. Aucune dépendance à inte
 
 La console affiche l'URL joueur et l'URL animateur (`/host?key=…`). Ouvrez l'URL animateur sur le PC, et les joueurs scannent le QR code.
 
+## Préparer la soirée (manches)
+Une soirée se découpe en manches (« Cinéma », « Années 80 »…). Les points sont comptés par manche et le Bilan les affiche côte à côte.
+
+1. Préparez un fichier CSV (Excel : « Enregistrer sous » → CSV, en UTF-8 ou non, séparateur `;` ou `,`). Partez de `exemple-soiree.csv`.
+2. Première ligne obligatoire : `manche;type;question;image;A;B;C;D;reponse`.
+3. Une manche **buzzer** tient sur une ligne : son nom et `buzzer`, le reste vide. L'ordre des lignes est l'ordre de la soirée.
+4. Dans la Régie, bloc « Manches » : « Importer les manches (CSV) ». En cas d'erreur, le message indique la ligne à corriger ; corrigez et réimportez.
+5. Pendant la soirée, « Suivante ▶ » passe à la manche suivante (les buzzers se ferment). Les points donnés vont dans la manche en cours.
+
+Sans fichier, la soirée se joue avec une seule manche, « Manche 1 », comme avant.
+Réimporter un fichier est refusé dès qu'un point a été donné : utilisez d'abord « Remettre les scores à zéro » (qui revient aussi à la première manche).
+Les images des futures manches QCM iront dans le dossier `images/`, à côté du serveur.
+
 ## Grand écran
 Le Grand écran est la page projetée derrière l'animateur, face aux équipes. Il n'a aucun bouton : c'est la Régie qui choisit ce qu'il affiche.
 
@@ -47,4 +60,5 @@ Le Grand écran affiche la même adresse que celle choisie dans la Régie (menu 
   - Demandez d'allonger la mise en veille.
   - Une reconnexion automatique rejoint l'équipe en moins d'une seconde au réveil.
 - Les équipes et les scores sont sauvegardés dans `scores.json` et rechargés au redémarrage. Le morceau en cours, lui, repart fermé, et l'historique d'annulation est vidé.
+- Les manches importées, la manche en cours et l'étape du Grand écran sont aussi sauvegardées dans `scores.json`.
 - Nouvelle partie : arrêtez le serveur et supprimez `scores.json` (ou utilisez « Remettre les scores à zéro »).

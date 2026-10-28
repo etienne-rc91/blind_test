@@ -192,6 +192,8 @@ function renderPlay() {
     sub.textContent = state.round ? `Morceau ${state.round} terminé` : '';
   }
 
+  const sec = state.sections[state.currentSection];
+  $('playTitle').lastChild.textContent = state.sections.length > 1 ? `Manche ${state.currentSection + 1} : ${sec.name}` : sec.name === 'Manche 1' ? 'Classement' : sec.name;
   const ol = $('ranking'); ol.innerHTML = '';
   // Au moins 7 lignes de place : peu d'équipes → lignes confortables, beaucoup → elles se resserrent.
   ol.style.gridTemplateRows = `repeat(${Math.max(7, state.teams.length)}, minmax(0, 1fr))`;
@@ -211,11 +213,17 @@ function renderSummary() {
   const head = $('sumHead'), body = $('sumBody');
   head.innerHTML = ''; body.innerHTML = '';
   const tr = el('tr');
-  tr.append(el('th', null, '#'), el('th', 'name', 'Équipe'), el('th', null, 'Total'));
+  const many = state.sections.length > 1;          // une seule manche : la colonne Total suffit
+  const cur = (i) => (i === state.currentSection ? 'current' : null);
+  tr.append(el('th', null, '#'), el('th', 'name', 'Équipe'));
+  if (many) state.sections.forEach((s, i) => tr.append(el('th', cur(i), s.name)));
+  tr.append(el('th', null, 'Total'));
   head.append(tr);
   for (const t of state.teams) {
     const r = el('tr');
-    r.append(el('td', null, t.place), el('td', 'name', t.name), el('td', null, t.score));
+    r.append(el('td', null, t.place), el('td', 'name', t.name));
+    if (many) t.scores.forEach((x, i) => r.append(el('td', cur(i), x)));
+    r.append(el('td', null, t.score));
     body.append(r);
   }
 }
