@@ -107,7 +107,7 @@ function loadScores() {
 
 // ---------- Parties (API HTTP, réservée à l'animateur) ----------
 fs.mkdirSync(IMAGES_DIR, { recursive: true });
-const parties = createPartiesStore({ dir: PARTIES_DIR, imageExists: (name) => isSafeImageName(name) && fs.existsSync(path.join(IMAGES_DIR, name)) });
+const parties = createPartiesStore({ dir: PARTIES_DIR, musicExists: () => true, imageExists: (name) => isSafeImageName(name) && fs.existsSync(path.join(IMAGES_DIR, name)) });
 const sameName = (a, b) => a != null && b != null && a.normalize('NFC').toLowerCase() === b.normalize('NFC').toLowerCase();
 const fail = (res, r) => res.status(r.status || 400).json({ error: r.error });
 

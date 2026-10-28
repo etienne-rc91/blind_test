@@ -41,7 +41,7 @@ const enc = encodeURIComponent;
 
 const Q = (text, answer = 'B') => ({ text, image: null, choices: { A: 'a', B: 'b', C: 'c', D: 'd' }, answer });
 const SECTIONS = [
-  { name: 'Cinéma', type: 'buzzer', questions: [] },
+  { name: 'Cinéma', type: 'buzzer', questions: [], songs: [] },
   { name: 'Culture G', type: 'qcm', questions: [Q('Capitale ?')] },
 ];
 
