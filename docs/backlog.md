@@ -24,7 +24,3 @@ Voir toutes les parties disponibles sur l'ordinateur, rangées dans un dossier, 
 - Actions sur une partie : la **modifier** (ouvre la page Création), la **sauvegarder** (copie, sous un autre nom…), et autres actions à définir.
 - C'est depuis cette page qu'on **choisit la partie qu'on va jouer**. Elle remplace à terme le bouton « Importer les manches » de la Régie.
 - À préciser : emplacement du dossier (par défaut `parties/` à côté du serveur ?), ce qui se passe si on change de partie alors que des points ont été donnés, suppression d'une partie.
-
-### Indices sur le Grand écran
-
-Évoqué au départ : afficher des indices pendant une manche. À concevoir (sur quelles manches, préparés dans le fichier ou tapés en direct, déclenchés comment depuis la Régie).
