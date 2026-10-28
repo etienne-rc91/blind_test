@@ -405,6 +405,8 @@
     let at = 0;                 // position voulue tant que la vidéo n’a pas joué
     let cued = false;           // la vidéo `ref` est chargée en CUED à la position `at` (pas encore lancée)
     let cueGen = 0;
+    let seekTarget = null;      // position demandée par seekTo, tant que getCurrentTime() donne encore l’ancienne
+    let seekGen = 0;
     let watchers = [];          // attentes d’un état ou d’une erreur
 
     function notify(stateCode, error) {
@@ -465,7 +467,7 @@
     // Résout une fois la vidéo prête (état CUED) : un playVideo() ou seekTo() pendant le chargement
     // fait répondre à YouTube l’erreur 2, même pour une vidéo valide.
     async function cue(id, sec) {
-      ref = id; failed = null; started = false; at = sec; cued = false;
+      ref = id; failed = null; started = false; at = sec; cued = false; seekTarget = null; seekGen += 1;
       const gen = ++cueGen;
       const wait = waitState(YT_STATE.CUED, READY_TIMEOUT, true);
       yt.cueVideoById({ videoId: id, startSeconds: sec });
@@ -477,17 +479,31 @@
       cued = true;
     }
 
+    // Après seekTo, getCurrentTime() garde l’ancienne position quelques centaines de ms : relue trop tôt,
+    // une position proche de Fin terminerait aussitôt le passage rejoué (R). seek attend donc que le temps ait suivi.
+    const SEEK_TOLERANCE = 0.5;   // s
+    const landed = (sec) => Math.abs((yt.getCurrentTime() || 0) - sec) < SEEK_TOLERANCE;
+    async function seekPlayed(sec) {
+      const gen = ++seekGen;
+      seekTarget = sec;
+      yt.seekTo(sec, true);
+      const until = Date.now() + READY_TIMEOUT;
+      while (gen === seekGen && !landed(sec) && Date.now() < until) await delay(50);
+      if (gen === seekGen) seekTarget = null;   // arrivé (ou délai dépassé : on revient au temps lu)
+    }
+
     const player = {
       async load(song) {
         await whenReady();
         if (song.ref !== ref || failed) await cue(song.ref, Number.isFinite(song.start) ? song.start : 0);
       },
       async seek(sec) {
+        if (yt && started) seekTarget = sec;   // dès l’appel : un relevé de position concurrent ne voit jamais l’ancienne
         await whenReady();
         if (!ref) return;
         // Pas encore lancée (ou finie) : seekTo lancerait la lecture ; on recharge à la position voulue.
         if (!started) { if (!cued || sec !== at) await cue(ref, sec); }   // déjà prête à cette position : rien à refaire
-        else yt.seekTo(sec, true);
+        else await seekPlayed(sec);
       },
       async play() {
         await whenReady();
@@ -512,7 +528,11 @@
       },
       position() {
         if (!yt || !started) return Promise.resolve(at);
-        return Promise.resolve(yt.getCurrentTime() || 0);
+        const t = yt.getCurrentTime() || 0;
+        if (seekTarget === null) return Promise.resolve(t);
+        if (!landed(seekTarget)) return Promise.resolve(seekTarget);   // ancienne position : jamais remontée à la page
+        seekTarget = null;
+        return Promise.resolve(t);
       },
       duration() {
         const d = yt && ref ? yt.getDuration() : 0;
