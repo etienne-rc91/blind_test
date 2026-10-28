@@ -22,5 +22,5 @@ Voir toutes les parties disponibles sur l'ordinateur, rangées dans un dossier, 
 
 - Liste des parties (fichiers CSV) du dossier, avec leur nom et leurs manches.
 - Actions sur une partie : la **modifier** (ouvre la page Création), la **sauvegarder** (copie, sous un autre nom…), et autres actions à définir.
-- C'est depuis cette page qu'on **choisit la partie qu'on va jouer**. Elle remplace à terme le bouton « Importer les manches » de la Régie.
+- C'est depuis cette page qu'on **choisit la partie qu'on va jouer**. Elle remplace à terme le bouton « Importer (CSV) » de la Régie.
 - À préciser : emplacement du dossier (par défaut `parties/` à côté du serveur ?), ce qui se passe si on change de partie alors que des points ont été donnés, suppression d'une partie.
