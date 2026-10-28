@@ -77,7 +77,7 @@ Un morceau ou un extrait QCM peut être une **vidéo**, jouée par le Grand écr
 **Avant la soirée** :
 1. Ouvrez le Grand écran sur le PC du serveur, à l’adresse `http://127.0.0.1:3000/screen` (et non l’IP du réseau), et mettez-le en plein écran sur le projecteur. Seul le dernier Grand écran ouvert ainsi joue les vidéos.
 2. **Cliquez une fois dans le Grand écran** : « Cliquez pour activer la vidéo ». Sans ce clic, le navigateur bloque le son et la vidéo ne démarre pas.
-3. Dans la Régie, mettez le Grand écran à l’étape **Jeu** : une vidéo ne se joue qu’à cette étape. La Régie prévient s’il n’y a pas de Grand écran, s’il n’est pas à l’étape Jeu ou s’il attend le clic.
+3. Dans la Régie, mettez le Grand écran à l’étape **Jeu** : une vidéo ne se joue qu’à cette étape. La Régie prévient s’il n’y a pas de Grand écran, s’il n’est pas ouvert à l’adresse `127.0.0.1`, s’il n’est pas à l’étape Jeu ou s’il attend le clic.
 
 **Pendant la soirée** : la Régie ne montre jamais la vidéo, seulement la réponse, la progression et les erreurs. Sur le Grand écran, la vidéo n’est visible que pendant la lecture ; la réponse n’apparaît qu’à la révélation. Pour YouTube, la barre de titre est rognée, et une vidéo en 4:3 est légèrement rognée en haut et en bas (un fichier téléchargé évite cela). Des publicités YouTube peuvent apparaître au lancement.
 
@@ -98,9 +98,9 @@ Z annule la dernière action : annuler « Lancer le compte à rebours » l'arrê
 Pendant une manche QCM, Espace, B, M et F sont sans effet. R rejoue l’extrait d’une question qui en a un.
 
 ### Question avec extrait
-**Préparation (Création)** : dans l’éditeur d’une question QCM, le bloc « Extrait (facultatif) » propose **+ Fichier**, **+ Vidéo**, **+ YouTube** et **+ Spotify** (en ajouter un remplace l’extrait existant), la barre de temps Début/Fin et « Écouter le passage », comme pour les morceaux (voir « Morceaux »), et « Retirer l’extrait ». Une question avec extrait porte un ♪ dans la liste des questions.
+**Préparation (Création)** : dans l’éditeur d’une question QCM, le bloc « Extrait (facultatif) » propose **+ Fichier**, **+ Vidéo**, **+ YouTube** et **+ Spotify** (en ajouter un remplace l’extrait existant), la barre de temps Début/Fin et « Écouter le passage », comme pour les morceaux (voir « Morceaux »), et « Retirer l’extrait ». Une question avec extrait porte un ♪ dans la liste des questions (🎬 pour un extrait vidéo).
 
-Une question qui a un extrait (♪ dans la liste de Création) s’ouvre autrement : la salle écoute d’abord, puis découvre la question.
+Une question qui a un extrait (♪ ou 🎬 dans la liste de Création) s’ouvre autrement : la salle écoute d’abord, puis découvre la question.
 1. Entrée affiche la page de la question, sans texte.
 2. Entrée (« Lancer l’extrait ») joue l’extrait. Le Grand écran affiche « ♪ Écoutez… », les Buzzers « ♪ Écoutez l’extrait… ». Pendant l’extrait, Entrée est ignorée.
 3. À la fin de l’extrait, la question apparaît seule. La suite est inchangée : propositions, compte à rebours, révélation.
@@ -136,7 +136,7 @@ Le Grand écran affiche la même adresse que celle choisie dans la Régie (menu 
 - R : rejouer l’extrait depuis le début (pas pendant un buzz non jugé).
 - À la fin du passage, la musique s’arrête et les buzzers restent ouverts.
 - Z ne relance jamais la musique.
-- Grand écran : `♪ Morceau n / total` pendant la lecture, puis la révélation (réponse, et pochette pour Spotify) jusqu’au morceau suivant.
+- Grand écran : `♪ Morceau n / total` (`🎬` pour une vidéo) pendant la lecture, puis la révélation (réponse, et pochette pour Spotify) jusqu’au morceau suivant.
 - Une seule Régie joue le son : la première ouverte. Le bouton « Le son sort ici » la change.
 
 - ↺ (liste des équipes) : réouvre le buzzer d'une équipe exclue sur le morceau en cours.
