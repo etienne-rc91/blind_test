@@ -403,6 +403,8 @@
     let failed = null;          // message d’erreur de la vidéo `ref` : le prochain load() la recharge
     let started = false;        // la vidéo `ref` a joué depuis son chargement (sinon seekTo la lancerait)
     let at = 0;                 // position voulue tant que la vidéo n’a pas joué
+    let cued = false;           // la vidéo `ref` est chargée en CUED à la position `at` (pas encore lancée)
+    let cueGen = 0;
     let watchers = [];          // attentes d’un état ou d’une erreur
 
     function notify(stateCode, error) {
@@ -410,8 +412,9 @@
       for (const w of list) if (!w(stateCode, error)) watchers.push(w);
     }
     // Attend l’état `wanted` (ou une erreur) au plus `ms` : true si atteint, false sinon ; rejette sur erreur.
-    function waitState(wanted, ms) {
-      if (yt && yt.getPlayerState() === wanted) return Promise.resolve(true);
+    // fresh : seul un changement d’état à venir compte (l’état actuel est celui de la vidéo précédente).
+    function waitState(wanted, ms, fresh = false) {
+      if (!fresh && yt && yt.getPlayerState() === wanted) return Promise.resolve(true);
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => { watchers = watchers.filter((w) => w !== watch); resolve(false); }, ms);
         const watch = (code, error) => {
@@ -438,14 +441,14 @@
             onReady: () => { if (gen === attempt) { yt = p; resolve(p); } },
             onStateChange: (e) => {
               if (gen !== attempt) return;
-              if (e.data === YT_STATE.PLAYING) started = true;
+              if (e.data === YT_STATE.PLAYING) { started = true; cued = false; }
               if (e.data === YT_STATE.ENDED) { at = p.getCurrentTime() || at; started = false; }   // seekTo relancerait la vidéo
               notify(e.data, null);
             },
             onError: (e) => {
               if (gen !== attempt) return;
               const msg = YT_ERRORS[e.data] || `Erreur YouTube (code ${e.data}).`;
-              failed = msg; started = false;
+              failed = msg; started = false; cued = false;
               notify(null, msg);
               errorFn(msg);
             },
@@ -459,27 +462,38 @@
     }
 
     // Charge `id` sans le lancer, prêt à partir de `sec`.
-    function cue(id, sec) {
-      ref = id; failed = null; started = false; at = sec;
+    // Résout une fois la vidéo prête (état CUED) : un playVideo() ou seekTo() pendant le chargement
+    // fait répondre à YouTube l’erreur 2, même pour une vidéo valide.
+    async function cue(id, sec) {
+      ref = id; failed = null; started = false; at = sec; cued = false;
+      const gen = ++cueGen;
+      const wait = waitState(YT_STATE.CUED, READY_TIMEOUT, true);
       yt.cueVideoById({ videoId: id, startSeconds: sec });
+      let ok;
+      try { ok = await wait; } catch (e) { if (gen === cueGen) throw e; return; }
+      if (gen !== cueGen) return;                       // un chargement plus récent a pris la main
+      // Même vidéo rechargée : YouTube peut rester en CUED sans le signaler de nouveau.
+      if (!ok && yt.getPlayerState() !== YT_STATE.CUED) throw new Error(YT_UNREACHABLE);
+      cued = true;
     }
 
     const player = {
       async load(song) {
         await whenReady();
-        if (song.ref !== ref || failed) cue(song.ref, Number.isFinite(song.start) ? song.start : 0);
+        if (song.ref !== ref || failed) await cue(song.ref, Number.isFinite(song.start) ? song.start : 0);
       },
       async seek(sec) {
         await whenReady();
         if (!ref) return;
         // Pas encore lancée (ou finie) : seekTo lancerait la lecture ; on recharge à la position voulue.
-        if (!started) cue(ref, sec);
+        if (!started) { if (!cued || sec !== at) await cue(ref, sec); }   // déjà prête à cette position : rien à refaire
         else yt.seekTo(sec, true);
       },
       async play() {
         await whenReady();
         if (!ref) return;
         if (failed) throw new Error(failed);
+        if (!started && !cued) await cue(ref, at);       // chargement précédent inachevé : jamais de playVideo() avant CUED
         if (yt.isMuted()) yt.unMute();   // coupé par YouTube après un démarrage bloqué : le son est toujours voulu
         yt.playVideo();
         // L’iframe ne dit pas si le navigateur bloque la lecture faute de geste : on le déduit quand la page n’en a reçu aucun.
@@ -514,7 +528,7 @@
       async check(id) {
         try {
           await whenReady();
-          cue(id, 0);
+          await cue(id, 0);
           yt.mute();
           yt.playVideo();
           const ok = await waitState(YT_STATE.PLAYING, READY_TIMEOUT);
