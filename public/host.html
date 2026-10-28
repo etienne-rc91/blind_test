@@ -700,10 +700,12 @@ function renderSongProgress() {
   $(err).textContent = soundMine && curSong() ? songError : '';
 }
 // Avertissement au-dessus du bloc du morceau quand le morceau en cours (ou le suivant, si aucun n’est en cours) est vidéo.
+// En QCM : quand l’extrait de la question en cours (ou de la suivante, avant sa page) est vidéo.
 function renderVideoWarning() {
   const sg = state.song, box = $('videoWarning');
   let target = null;
-  if (sg && !state.qcm) {
+  if (sg && state.qcm) target = sg.songs[state.qcm.index] || null;
+  else if (sg) {
     const cur = curSong();
     target = cur && (!sg.concluded || sg.audible) ? cur : sg.songs[sg.played] || null;
   }

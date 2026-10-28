@@ -394,7 +394,7 @@ function renderQuestions(s) {
   const ol = $('questions'); ol.innerHTML = '';
   s.questions.forEach((q, i) => {
     const li = el('li', i === selQuestion ? 'on' : '');
-    li.append(el('span', 'grip', '⋮⋮'), el('span', 'txt', `${i + 1}. ${q.extract ? '♪ ' : ''}${q.text.trim() || (q.image ? `🖼 ${q.image}` : 'Question vide')}`));
+    li.append(el('span', 'grip', '⋮⋮'), el('span', 'txt', `${i + 1}. ${q.extract ? (isVideo(q.extract.source) ? '🎬 ' : '♪ ') : ''}${q.text.trim() || (q.image ? `🖼 ${q.image}` : 'Question vide')}`));
     li.append(questionTodo(q).length ? Object.assign(el('span', 'warn', '⚠'), { title: 'À compléter' }) : el('span', 'ok', `${q.answer} ✓`));
     li.append(moveButtons(i, s.questions, (from, to) => { selQuestion = follow(selQuestion, from, to); touch(); render(); }));
     li.onclick = () => { selQuestion = i; render(); };
@@ -618,8 +618,8 @@ window.renderExtras = (q) => {
   if (q.image) { const im = el('img'); im.src = src; im.alt = ''; body.append(im); }
   if (q.text.trim()) body.append(el('p', 'pq', q.text));
   if (!q.image && !q.text.trim()) body.append(el('p', 'pq muted', 'Texte ou image de la question'));
-  // Indicateur d’écoute : sur le Grand écran, il précède la question pendant l’extrait.
-  const listen = q.extract ? el('p', 'pl', '♪ Écoutez…') : null;
+  // Indicateur d’écoute : sur le Grand écran, il précède la question pendant l’extrait (un extrait vidéo y est montré en grand).
+  const listen = q.extract ? el('p', 'pl', isVideo(q.extract.source) ? '🎬 Vidéo' : '♪ Écoutez…') : null;
   const grid = el('div', 'pc');
   for (const l of LETTERS) {
     const c = el('div');

@@ -69,10 +69,19 @@
   #videoStage, #videoStage .vp { position: absolute; inset: 0; }
   #videoStage.off, #videoStage .vp[hidden] { visibility: hidden; }
   #videoCover { position: absolute; inset: 0; background: var(--panel); display: flex; align-items: center; justify-content: center; text-align: center; padding: 4vh; font-size: 9vh; font-weight: 800; color: var(--muted); }
-  #videoCover[hidden], #videoStrip[hidden], #stripCover[hidden] { display: none; }
+  #videoCover[hidden], #videoStrip[hidden], #stripCover[hidden], #videoQStrip[hidden] { display: none; }
   #videoStrip { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 2vw; padding: 1.6vh 2vw; background: var(--panel); border-top: .4vh solid var(--green); animation: pop 400ms ease-out; }
   #stripCover { height: 12vh; width: 12vh; flex: none; object-fit: cover; border-radius: 1vh; }
   #videoStrip .ans { margin: 0; min-width: 0; font-size: 6vh; font-weight: 800; line-height: 1.05; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Extrait vidéo rejoué pendant le compte à rebours d’une question QCM : temps restant et propositions en bas. */
+  #videoQStrip { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 2vw; padding: 1.4vh 2vw; background: var(--panel); border-top: .4vh solid var(--line); }
+  #vqTimer { flex: none; min-width: 12vh; text-align: center; font-size: 8vh; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+  #vqTimer.low { color: var(--red); }
+  #vqTimer.done { font-size: 4vh; }
+  #vqChoices { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1vw; }
+  #vqChoices .choice { font-size: 3vh; padding: 1vh 1vw; gap: 1vw; background: var(--bg); }
+  #vqChoices .choice .l { width: 5vh; height: 5vh; }
+  #vqChoices .choice .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Activation du son : un clic dans la fenêtre du projecteur, une fois. */
   #unlock { position: fixed; inset: 0; background: rgba(0,0,0,.85); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 7vh; font-weight: 800; cursor: pointer; border: 0; width: 100%; font-family: inherit; }
   #unlock[hidden] { display: none; }
@@ -171,6 +180,7 @@
     <div id="videoStage" class="off"></div>
     <div id="videoCover" hidden></div>
     <div id="videoStrip" hidden><img id="stripCover" alt="" hidden><p class="ans" id="stripAnswer"></p></div>
+    <div id="videoQStrip" hidden><span id="vqTimer"></span><div id="vqChoices"></div></div>
   </div>
   <div id="qcmView" hidden>
     <div id="qBody"><img id="qImg" alt=""><p id="qText"></p><p id="qListen" hidden>♪ Écoutez…</p></div>
@@ -385,16 +395,17 @@ function renderSetup() {
 function renderPlay() {
   const q = state.qcm;
   const inQuestion = !!q && q.step !== 'idle';
-  // Passage vidéo : main dit ce qui occupe la zone principale (null = affichage habituel avec le classement).
-  const view = inQuestion ? { main: null } : VideoView.screenView({ stage: state.stage, phase: state.phase, song: state.song, qcm: q, playingNow });
+  // Passage vidéo : main dit ce qui occupe la zone principale (null = affichage habituel : classement ou question).
+  // En QCM, l’extrait vidéo prend la place de la question pendant qu’il joue (et son cache pendant l’écoute).
+  const view = VideoView.screenView({ stage: state.stage, phase: state.phase, song: state.song, qcm: q, playingNow });
   const main = view.main;
-  $('qcmView').hidden = !inQuestion;
+  $('qcmView').hidden = !inQuestion || main !== null;
   $('ranking').hidden = inQuestion || main !== null;
   const reveal = inQuestion ? null : state.song?.reveal;
   $('banner').hidden = inQuestion || (!!reveal && main !== 'banner');
   renderReveal(main === null || main === 'reveal' ? reveal : null);
   $('reveal').classList.toggle('full', main === 'reveal');
-  renderVideoZone(view, reveal);
+  renderVideoZone(view, reveal, inQuestion ? q : null);
   $('playTitle').firstChild.textContent = 'Blind test';
   const sec0 = state.sections[state.currentSection];
   $('playTitle').lastChild.textContent = state.sections.length > 1 ? `Manche ${state.currentSection + 1} : ${sec0.name}` : sec0.name === 'Manche 1' ? 'Classement' : sec0.name;
@@ -430,12 +441,16 @@ function songSub() {
 }
 
 // La vidéo n’est visible qu’en main === 'video' ; en 'cover', un cache neutre la couvre entièrement.
-function renderVideoZone(view, reveal) {
+// Bande 'reveal' (manche buzzer) : la réponse ; bande 'countdown' (QCM) : le temps restant et les propositions.
+function renderVideoZone(view, reveal, q) {
   const shown = view.main === 'video' || view.main === 'cover';
   $('videoZone').hidden = !shown;
   $('videoStage').classList.toggle('off', view.main !== 'video');
   $('videoCover').hidden = view.main !== 'cover';
   $('videoCover').textContent = view.main === 'cover' ? view.cover : '';
+  const qStrip = view.main === 'video' && view.strip === 'countdown' && !!q?.question?.choices;
+  $('videoQStrip').hidden = !qStrip;
+  if (qStrip) renderChoices($('vqChoices'), q.question.choices);
   const strip = view.main === 'video' && view.strip === 'reveal' && reveal;
   $('videoStrip').hidden = !strip;
   if (!strip) return;
@@ -488,7 +503,7 @@ function renderQuestion(q) {
   // Aux étapes intro et écoute, la question n’est pas encore envoyée : ni texte ni image.
   const qq = q.question ?? {};
   $('playTitle').firstChild.textContent = `Question ${q.index + 1}/${q.total}`;
-  $('qListen').hidden = !q.listening;
+  $('qListen').hidden = !q.listening || !!state.song?.video;   // extrait vidéo : le cache « 🎬 Question n / total » le remplace
   const img = $('qImg');
   img.hidden = !qq.image;
   if (qq.image) { const src = `/images/${encodeURIComponent(qq.image)}`; if (img.getAttribute('src') !== src) img.src = src; }
@@ -499,27 +514,27 @@ function renderQuestion(q) {
   box.hidden = !qq.choices;
   box.innerHTML = '';
   if (qq.choices) {
-    for (const l of ['A', 'B', 'C', 'D']) {
-      const c = el('div', 'choice');
-      c.dataset.l = l;
-      c.append(el('span', 'l', l), el('span', 't', qq.choices[l]));
-      if (q.step === 'revealed') {
+    renderChoices(box, qq.choices);
+    if (q.step === 'revealed') {
+      for (const c of box.children) {
+        const l = c.dataset.l;
         c.classList.add(q.answer === l ? 'good' : 'dim');
         const n = q.counts?.[l] ?? 0;
         c.append(el('span', 'n', `${n} équipe${n > 1 ? 's' : ''}`));
       }
-      box.append(c);
     }
   }
 
-  const timer = $('qTimer'), info = $('qInfo');
+  // Le temps restant s’affiche sous la question et dans la bande d’une vidéo rejouée (une seule des deux est visible).
+  const timer = $('qTimer'), info = $('qInfo'), vTimer = $('vqTimer');
   cancelAnimationFrame(qTick);
-  timer.className = '';
+  timer.className = ''; vTimer.className = '';
+  vTimer.textContent = q.step === 'locked' ? 'Temps écoulé' : '';
+  vTimer.classList.toggle('done', q.step === 'locked');
   if (q.step === 'countdown') {
     const loop = () => {
       const left = Math.max(0, Math.ceil((qDeadline - Date.now()) / 1000));
-      timer.textContent = left;
-      timer.classList.toggle('low', left <= 5);
+      for (const t of [timer, vTimer]) { t.textContent = left; t.classList.toggle('low', left <= 5); }
       if (left > 0) qTick = requestAnimationFrame(loop);
     };
     loop();
@@ -533,6 +548,17 @@ function renderQuestion(q) {
   } else {
     timer.textContent = '';
     info.textContent = '';
+  }
+}
+
+// Propositions A–D (lettres de couleur et textes).
+function renderChoices(box, choices) {
+  box.innerHTML = '';
+  for (const l of ['A', 'B', 'C', 'D']) {
+    const c = el('div', 'choice');
+    c.dataset.l = l;
+    c.append(el('span', 'l', l), el('span', 't', choices[l]));
+    box.append(c);
   }
 }
 
