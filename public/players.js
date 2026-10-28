@@ -394,6 +394,14 @@
     frame.style.width = '100%';
     frame.style.height = '100%';
     frame.style.pointerEvents = 'none';            // aucun clic ne parvient à l’interface de YouTube
+    frame.style.position = 'relative';
+    frame.style.overflow = 'hidden';
+    // Avec controls: 0, YouTube affiche quand même son bandeau de titre (chaîne et titre) en haut et son logo en bas.
+    // L’iframe est plus haute que le cadre (150 %) et remontée d’un quart : ces bandeaux tombent hors du cadre visible.
+    // Plus haute que 16:9, elle place l’image (16:9) en son milieu, c’est-à-dire exactement dans la partie visible.
+    const crop = document.createElement('div');
+    crop.style.cssText = 'position:absolute; left:0; top:-25%; width:100%; height:150%';
+    frame.append(crop);
     opts.container.append(frame);
     let errorFn = () => {};
     let yt = null;              // YT.Player prêt
@@ -434,7 +442,7 @@
       const gen = ++attempt;
       readyPromise = loadYoutubeApi().then((YT) => withTimeout(new Promise((resolve) => {
         const holder = document.createElement('div');   // remplacé par l’iframe
-        frame.replaceChildren(holder);
+        crop.replaceChildren(holder);
         const p = new YT.Player(holder, {
           width: '100%',
           height: '100%',
@@ -457,7 +465,7 @@
           },
         });
       }), READY_TIMEOUT, YT_UNREACHABLE)).catch((e) => {
-        if (gen === attempt) { attempt += 1; frame.replaceChildren(); readyPromise = null; }   // le prochain essai recommence
+        if (gen === attempt) { attempt += 1; crop.replaceChildren(); readyPromise = null; }   // le prochain essai recommence
         throw e;
       });
       return readyPromise;
