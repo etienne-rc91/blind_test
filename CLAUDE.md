@@ -38,7 +38,7 @@ Le Grand écran est en lecture seule et son contenu dépend de l'étape choisie 
 | **Morceau** | Une question d'une manche buzzer, lancée avec Espace. Dans une manche avec morceaux, le code dit `song` (`section.songs`) ; `round` reste le compteur de la manche libre. | `round` (existant), `song` |
 | **Question** | Une question d'une manche QCM, décrite dans le fichier CSV. | `question` |
 | **Extrait** | Passage musical d’une question QCM, joué avant la question. | `question.extract` |
-| **Passage** | Extrait d’un morceau, de Début à Fin. | `song` (`start`, `end`) |
+| **Passage** | Portion d’un morceau ou d’un extrait, de Début à Fin. | `song` (`start`, `end`) |
 | **Révélation** | Réponse d’un morceau dévoilée sur le Grand écran (après B ou F). | — |
 | **Podium** | Classement dense sur le total : ex aequo à la même place, sans trou (1, 1, 2). Toutes les équipes des places 1 à 3 y montent. | — |
 
