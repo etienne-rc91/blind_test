@@ -7,11 +7,11 @@
 <style>
   :root {
     --bg: #eef0f7; --panel: #ffffff; --ink: #16204a; --muted: #5b6386; --line: #d3d7e8;
-    --red: #d7263d; --gold: #f2b705; --green: #1f9d63; --off: #8b91ad;
+    --red: #d7263d; --gold: #f2b705; --green: #1f9d63; --off: #8b91ad; --accent: #2f6fd6; --track: #d3d7e8;
     color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #0e1430; --panel: #161e44; --ink: #eef0f7; --muted: #98a0c4; --line: #2b3360; --off: #5a6290; color-scheme: dark; }
+    :root { --bg: #0e1430; --panel: #161e44; --ink: #eef0f7; --muted: #98a0c4; --line: #2b3360; --off: #5a6290; --accent: #6ea0ff; --track: #2b3360; color-scheme: dark; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif; font-size: 18px; }
@@ -70,6 +70,36 @@
   #qAnswers li.bad { border-color: var(--red); }
   #qMain { flex: none; font: inherit; font-size: 1.4rem; font-weight: 800; padding: 18px; border-radius: 14px; border: 0; background: var(--ink); color: var(--bg); cursor: pointer; }
   #qMain kbd { font: inherit; font-size: .9rem; font-weight: 400; opacity: .7; margin-left: 10px; }
+  /* Morceau (manche avec morceaux) : réponse, avancement du passage, liste. Hauteur bornée pour que tout tienne dans la fenêtre. */
+  #songPanel { flex: none; max-height: 44vh; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 12px; }
+  #songPanel[hidden], #soundHere[hidden], #bNextSection[hidden] { display: none; }
+  .songMain, .songSide { background: var(--panel); border: 3px solid var(--line); border-radius: 18px; padding: 14px 18px; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+  .songSide { overflow: hidden; border-width: 2px; }
+  .songHead { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--muted); font-size: 1.05rem; }
+  #songAnswer { font-size: clamp(1.6rem, min(4vw, 7vh), 3rem); font-weight: 800; line-height: 1.05; overflow-wrap: anywhere; }
+  .hint.secret { font-size: .8rem; }
+  #songStatus { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; }
+  #songTime { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+  .bar { height: 12px; border-radius: 6px; background: var(--track); overflow: hidden; flex: none; }
+  #songBar { height: 100%; width: 0; background: var(--accent); border-radius: 6px; }
+  #songError { margin: 0; color: var(--red); font-weight: 700; }
+  #songError:empty { display: none; }
+  .songActions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+  .songActions button, #soundHere { font: inherit; font-size: 1rem; font-weight: 700; padding: 8px 12px; border-radius: 10px; border: 2px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+  .songActions button kbd { font: inherit; font-size: .85rem; font-weight: 400; color: var(--muted); margin-left: 8px; }
+  #bNextSection { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  #soundHere { border-color: var(--accent); color: var(--accent); padding: 4px 10px; font-size: .9rem; }
+  .songSide .label { color: var(--muted); font-size: .95rem; }
+  #songList { margin: 0; padding: 0; list-style: none; overflow-y: auto; min-height: 0; flex: 1; }
+  #songList li { padding: 2px 0; overflow-wrap: anywhere; }
+  #songList li.done { opacity: .5; }
+  #songList li.current { font-weight: 800; }
+  /* Avec un morceau, le bloc du buzz partage la hauteur : le nom de l’équipe est un peu plus petit. */
+  #stage.withSong #first { padding: 12px; }
+  #stage.withSong #first .who { font-size: clamp(2rem, min(6vw, 9vh), 5rem); }
+  #stage.withSong #first .sub { margin-top: 8px; }
+  @media (max-width: 900px) { #songPanel { grid-template-columns: 1fr; max-height: none; } }
+
   .cd { display: flex; align-items: center; gap: 6px; font-size: .9rem; color: var(--muted); }
   .cd input { width: 3.4em; font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
 
@@ -118,6 +148,24 @@
 <body>
 <div class="wrap">
   <section id="stage">
+    <div id="songPanel" hidden>
+      <div class="songMain">
+        <div class="songHead"><span id="songMeta"></span><button id="soundHere" hidden title="Jouer la musique sur ce PC plutôt que sur l’autre Régie">Le son sort ici</button></div>
+        <div id="songAnswer"></div>
+        <p class="hint secret">Réponse visible uniquement ici</p>
+        <div id="songStatus"><span id="songState"></span><span id="songTime"></span></div>
+        <div class="bar"><div id="songBar"></div></div>
+        <p id="songError" role="alert"></p>
+        <div class="songActions">
+          <button id="bReplay" title="Relancer le passage depuis Début">Rejouer l’extrait<kbd>R</kbd></button>
+          <button id="bNextSection">Manche terminée — Suivante ▶</button>
+        </div>
+      </div>
+      <div class="songSide">
+        <div class="label">Morceaux de la manche</div>
+        <ol id="songList"></ol>
+      </div>
+    </div>
     <div id="first"><div class="who">Prêt</div><div class="sub">Ouvrez les buzzers pour lancer le premier morceau</div></div>
     <div class="controls">
       <button id="bOpen">Nouveau morceau<kbd>Espace</kbd></button>
@@ -183,6 +231,7 @@
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
+<script src="/players.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const key = new URLSearchParams(location.search).get('key');
@@ -199,6 +248,17 @@ function beep() {
   g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
   o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.36);
 }
+// Son de victoire sur B dans une manche avec morceaux : 4 notes montantes, environ 1 s.
+function fanfare() {
+  if (!ctx) return;
+  const t0 = ctx.currentTime;
+  for (const [freq, at, len] of [[523.25, 0, 0.14], [659.25, 0.15, 0.14], [783.99, 0.3, 0.14], [1046.5, 0.45, 0.6]]) {
+    const o = ctx.createOscillator(), g = ctx.createGain(), t = t0 + at;
+    o.type = 'triangle'; o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.02); g.gain.exponentialRampToValueAtTime(0.001, t + len);
+    o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + len + 0.02);
+  }
+}
 addEventListener('pointerdown', unlockAudio); addEventListener('keydown', unlockAudio);
 
 // ----- Actions -----
@@ -212,6 +272,9 @@ $('prevSection').onclick = () => act('host:section', { index: state.currentSecti
 $('nextSection').onclick = () => act('host:section', { index: state.currentSection + 1 });
 $('partiesLink').href = `/parties?key=${encodeURIComponent(key)}`;
 for (const b of document.querySelectorAll('[data-stage]')) b.onclick = () => act('host:stage', { stage: b.dataset.stage });
+$('bReplay').onclick = () => act('host:replay');
+$('bNextSection').onclick = () => act('host:section', { index: state.currentSection + 1 });
+$('soundHere').onclick = () => act('host:sound-here');
 $('resetScores').onclick = () => { if (confirm('Remettre tous les scores à zéro ?')) act('host:reset-scores'); };
 // ----- QCM -----
 // Une seule action possible à chaque étape ; le serveur ignore une action envoyée deux fois.
@@ -247,6 +310,7 @@ addEventListener('keydown', (e) => {
     return;
   }
   if (k === ' ') { e.preventDefault(); act('host:open'); }
+  else if (k === 'r') { if (state?.song && !e.metaKey && !e.ctrlKey && !e.altKey) act('host:replay'); }   // Cmd+R recharge la page
   else if (k === 'b') act('host:correct');
   else if (k === 'm') act('host:wrong');
   else if (k === 'f') act('host:close');
@@ -273,8 +337,111 @@ function showJoin(ip) {
 
 socket.on('state', (s) => {
   if (s.qcm?.step === 'countdown') qDeadline = Date.now() + s.qcm.remainingMs;
-  state = s; render();
+  state = s; checkFanfare(); render(); scheduleSync();
 });
+// Une seule Régie joue le son : le serveur dit laquelle.
+socket.on('sound', ({ mine } = {}) => { soundMine = mine === true; if (state) { render(); scheduleSync(); } });
+// Déconnectée, cette Régie n’est peut-être plus celle qui joue : on coupe plutôt que risquer deux sons.
+socket.on('disconnect', () => { soundMine = false; if (state) scheduleSync(); });
+
+// ----- Morceaux : appliquer l’état du serveur au lecteur -----
+// Le serveur décide (audible ou non) ; la Régie obéit et ne remonte que la fin du passage (host:ended).
+let soundMine = false;
+const players = {};          // un lecteur par source, créé au premier besoin
+let player = null;           // lecteur du passage chargé (null si la source n’est pas disponible)
+let loadedKey = null;        // `${manche}:${index}:${seq}` du passage chargé : une nouvelle clé = repartir de Début
+let playingNow = false;      // le lecteur joue
+let endedKey = null;         // passage dont la fin a déjà été signalée (une seule fois)
+let songError = '';
+let pos = null, posKey = null;   // dernière position lue, et le passage auquel elle se rapporte
+let pollTimer = null;
+let prevSong = null, fanfareKey = null;
+let syncing = Promise.resolve();
+
+const curSong = () => (state?.song && state.song.index !== null ? state.song.songs[state.song.index] : null);
+const songKey = () => `${state.currentSection}:${state.song?.index}:${state.song?.seq}`;
+const fmtTime = (sec) => { const t = Math.max(0, Math.floor(sec)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+
+function getPlayer(source) {
+  if (!players[source]) {
+    const p = Players.create(source);   // lève une erreur si la source n’est pas disponible
+    p.onError((msg) => showSongError(msg));
+    players[source] = p;
+  }
+  return players[source];
+}
+function showSongError(msg) { songError = `Lecture impossible : ${msg}`; renderSongProgress(); }
+
+// Les mises à jour du lecteur s’enchaînent une par une ; chacune relit l’état le plus récent.
+function scheduleSync() { syncing = syncing.then(syncSound).catch((e) => showSongError(e.message || String(e))); }
+async function syncSound() {
+  const cur = curSong();
+  if (!soundMine || !cur) return stopAll();
+  const key = songKey();
+  if (key !== loadedKey) {
+    stopAll();
+    loadedKey = key; songError = ''; pos = null; posKey = null;
+    try { player = getPlayer(cur.source); } catch (e) { player = null; showSongError(e.message); return; }
+    await player.load(cur);
+    await player.seek(cur.start);
+    pos = cur.start; posKey = key;
+    renderSongProgress();
+  }
+  if (!player || songKey() !== key) return;   // l’état a changé pendant le chargement : la mise à jour suivante s’en charge
+  if (state.song.audible && soundMine && endedKey !== key) {
+    if (!playingNow) {
+      try { await player.play(); playingNow = true; songError = ''; } catch (e) { showSongError(e.message); }
+    }
+  } else if (playingNow) {
+    await player.pause(); playingNow = false;
+  }
+  updatePoll();
+  await readPosition(key);
+}
+function stopAll() {
+  for (const p of Object.values(players)) p.pause();
+  playingNow = false;
+  updatePoll();
+}
+async function readPosition(key) {
+  if (!player || key !== loadedKey) return;
+  pos = await player.position(); posKey = key;
+  renderSongProgress();
+}
+function updatePoll() {
+  const want = soundMine && playingNow;
+  if (want && !pollTimer) pollTimer = setInterval(tick, 200);
+  else if (!want && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+// Pendant la lecture : avancement, et fin du passage (Fin atteinte, ou fin réelle du fichier) signalée une seule fois.
+async function tick() {
+  const cur = curSong();
+  if (!player || !playingNow || !cur) return;
+  const key = loadedKey;
+  if (songKey() !== key) return;
+  const p = await player.position(), d = await player.duration();
+  pos = p; posKey = key;
+  renderSongProgress();
+  const fileEnd = d !== null && p >= d - 0.25;
+  if ((p >= cur.end || fileEnd) && endedKey !== key && state.song.audible && soundMine && playingNow && songKey() === key) {
+    endedKey = key;
+    player.pause(); playingNow = false; updatePoll();
+    act('host:ended', { seq: state.song.seq });
+  }
+}
+// Fanfare quand le morceau passe à « trouvé » (B). Un Z puis B de nouveau sur le même passage ne la rejoue pas,
+// pas plus que R après B ; un nouveau passage du morceau (Z de Espace, puis Espace) la rejoue.
+function checkFanfare() {
+  const sg = state.song;
+  const base = sg && sg.index !== null ? `${state.currentSection}:${sg.index}` : null;
+  if (base && sg.outcome === 'found' && prevSong?.base === base && prevSong.outcome !== 'found') {
+    const k = `${base}:${sg.seq}`;
+    if (k !== fanfareKey && soundMine) { fanfareKey = k; fanfare(); }
+  }
+  prevSong = base ? { base, outcome: sg.outcome } : null;
+}
+// Lecture refusée faute de geste (Régie rechargée en pleine lecture) : le prochain clic ou la prochaine touche relance.
+for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, () => { if (state?.song?.audible && !playingNow) scheduleSync(); });
 
 // ----- Rendu -----
 function renderQcm(q) {
@@ -322,6 +489,69 @@ function renderQcm(q) {
 }
 const RUNNING_STEPS = ['countdown', 'locked', 'revealed'];
 
+function songStatusLabel(sg) {
+  if (sg.concluded) return 'Conclu';
+  if (sg.audio === 'ended') return 'Passage terminé';
+  if (sg.audible) return 'Lecture';
+  if (sg.audio === 'playing' && state.phase === 'buzzed') return 'En pause (buzz)';
+  if (sg.audio === 'paused') return 'En pause';
+  return 'Arrêté';
+}
+const sourceLabel = (x) => (x.source === 'spotify' ? '♪ Spotify' : '📁');
+const sectionDone = (sg) => sg.played >= sg.total && (sg.index === null || sg.concluded);
+
+function renderSong() {
+  const sg = state.song;
+  const on = !!sg && !state.qcm;
+  $('songPanel').hidden = !on;
+  $('stage').classList.toggle('withSong', on);
+  if (!on) return;
+  const cur = curSong(), done = sectionDone(sg);
+  $('songMeta').textContent = cur
+    ? `Morceau ${sg.index + 1} / ${sg.total} · ${sourceLabel(cur)}`
+    : done ? `${sg.total} morceau${sg.total > 1 ? 'x' : ''} joué${sg.total > 1 ? 's' : ''}` : `Morceau suivant : ${sg.played + 1} / ${sg.total}`;
+  $('songAnswer').textContent = cur ? cur.answer : done ? 'Manche terminée' : 'Prêt : Espace lance le morceau';
+  $('songState').textContent = cur ? songStatusLabel(sg) : '';
+  $('soundHere').hidden = soundMine;
+  $('bReplay').disabled = !cur || state.phase === 'buzzed';
+  $('bNextSection').hidden = !done;
+  $('bNextSection').disabled = state.currentSection >= state.sections.length - 1;
+  const ol = $('songList'); ol.innerHTML = '';
+  sg.songs.forEach((x, i) => {
+    const li = document.createElement('li');
+    const isCur = i === sg.index, played = i < sg.played;
+    li.textContent = `${isCur ? '▶ ' : played ? '✓ ' : ''}${i + 1}. ${isCur || played ? '' : sourceLabel(x) + ' '}${x.answer}`;
+    li.className = isCur ? 'current' : played ? 'done' : '';
+    ol.append(li);
+  });
+  // Le morceau en cours (ou le suivant) reste visible même si la liste défile.
+  const curLi = ol.children[sg.index ?? sg.played];
+  if (curLi && (curLi.offsetTop < ol.scrollTop || curLi.offsetTop + curLi.offsetHeight > ol.scrollTop + ol.clientHeight)) {
+    ol.scrollTop = curLi.offsetTop - ol.clientHeight / 2;
+  }
+  renderSongProgress();
+}
+// Avancement dans le passage : aussi en pause, pour montrer où la musique reprendra.
+function renderSongProgress() {
+  const cur = curSong();
+  if ($('songPanel').hidden) return;
+  if (!cur) { $('songBar').style.width = '0%'; $('songTime').textContent = ''; $('songError').textContent = ''; return; }
+  const len = cur.end - cur.start;
+  const at = posKey === songKey() && pos !== null ? Math.min(Math.max(pos - cur.start, 0), len) : 0;
+  $('songBar').style.width = soundMine ? `${(at / len) * 100}%` : '0%';
+  $('songTime').textContent = soundMine ? `${fmtTime(at)} / ${fmtTime(len)} du passage` : 'Le son sort sur une autre Régie';
+  $('songError').textContent = soundMine ? songError : '';
+}
+// Libellé de Espace pendant une manche avec morceaux (inchangé dans une manche libre).
+function renderOpenButton() {
+  const sg = state.song, b = $('bOpen');
+  if (!sg) { b.firstChild.nodeValue = 'Nouveau morceau'; b.disabled = false; return; }
+  const resume = sg.index !== null && !sg.concluded && sg.audio === 'paused' && state.phase !== 'buzzed';
+  const next = (sg.index === null || sg.concluded) && sg.played < sg.total;
+  b.firstChild.nodeValue = resume ? 'Reprendre' : 'Morceau suivant';
+  b.disabled = !resume && !next;
+}
+
 function render() {
   const inQcm = !!state.qcm;
   $('qcmPanel').hidden = !inQcm;
@@ -352,6 +582,8 @@ function render() {
   $('bOk').disabled = $('bKo').disabled = state.phase !== 'buzzed';
   $('bClose').disabled = state.phase === 'closed';
   $('bUndo').disabled = !state.canUndo;
+  renderOpenButton();
+  renderSong();
   const pn = $('partie'); pn.innerHTML = '';
   if (state.partieName) { pn.append('Partie : '); const b = document.createElement('b'); b.textContent = state.partieName; pn.append(b); }
   else pn.textContent = 'Aucune partie choisie';
