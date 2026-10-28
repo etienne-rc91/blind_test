@@ -34,6 +34,7 @@ Pendant la soirée, « Suivante ▶ » passe à la manche suivante (les buzzers 
 - Une manche **buzzer** libre tient sur une ligne : son nom et `buzzer`, le reste vide. Avec des morceaux, elle a une ligne par morceau (voir « Morceaux »). L'ordre des lignes est l'ordre de la soirée.
 - Une manche **QCM** a une ligne par question, avec le même nom de manche sur chaque ligne : `question` (texte) et/ou `image`, les propositions `A` à `D`, et la bonne réponse dans `reponse` (A, B, C ou D). Exemple :
   `Culture G;qcm;Qui est cet acteur ?;acteur1.jpg;Brad Pitt;Tom Cruise;Johnny Depp;Keanu Reeves;C`
+- Une question QCM peut avoir un **extrait** : remplissez `musique`, `debut` et `fin` sur sa ligne (comme pour un morceau, voir « Morceaux »). `reponse` reste la lettre A à D.
 - Les images se placent dans le dossier `images/` ; la colonne `image` contient seulement le nom du fichier (pas d'adresse web : il n'y a pas internet en salle).
 
 ## Morceaux (musique jouée par l’app)
@@ -74,6 +75,17 @@ Dans la Régie, un seul bouton suit le déroulé, raccourci **Entrée** :
 La durée du compte à rebours se règle dans le bloc « Manches » (20 s par défaut, de 5 à 120 s).
 Z annule la dernière action : annuler « Lancer le compte à rebours » l'arrête et efface les réponses reçues ; annuler « Révéler » retire les points. Un double appui sur Entrée ne saute pas d'étape.
 Pendant une manche QCM, Espace, B, M et F sont sans effet.
+
+### Question avec extrait
+Une question qui a un extrait (♪ dans la liste de Création) s’ouvre autrement : la salle écoute d’abord, puis découvre la question.
+1. Entrée affiche la page de la question, sans texte.
+2. Entrée (« Lancer l’extrait ») joue l’extrait. Le Grand écran affiche « ♪ Écoutez… », les Buzzers « ♪ Écoutez l’extrait… ». Pendant l’extrait, Entrée est ignorée.
+3. À la fin de l’extrait, la question apparaît seule. La suite est inchangée : propositions, compte à rebours, révélation.
+
+- **R** (« Rejouer l’extrait ») rejoue l’extrait depuis Début, à n’importe quelle étape après le lancement, même pendant le compte à rebours ou après la révélation. Cela ne change rien d’autre, et le compte à rebours ne coupe pas l’extrait. « Question suivante », un changement de manche ou d’étape du Grand écran l’arrêtent.
+- **« Afficher la question »** (bouton, pendant l’extrait) coupe l’extrait et affiche la question. Utile si l’extrait est trop long, ou si la lecture est impossible (fichier introuvable, Spotify déconnecté) : la question n’est jamais bloquée.
+- **Z** annule « Afficher la question » (retour à l’écoute, musique coupée ; R la relance). Z ne relance jamais la musique.
+- Après un redémarrage du serveur, une question non révélée repart à la page de la question.
 
 ## Grand écran
 Le Grand écran est la page projetée derrière l'animateur, face aux équipes. Il n'a aucun bouton : c'est la Régie qui choisit ce qu'il affiche.
@@ -125,6 +137,7 @@ Le Grand écran affiche la même adresse que celle choisie dans la Régie (menu 
 - Les équipes et les scores sont sauvegardés dans `scores.json` et rechargés au redémarrage. Le morceau en cours, lui, repart fermé, et l'historique d'annulation est vidé. Dans une manche avec morceaux, un morceau interrompu (ni B ni F) n’est pas compté : Espace le rejoue depuis Début.
 - Les manches importées, la manche en cours et l'étape du Grand écran sont aussi sauvegardées dans `scores.json`.
 - Nouvelle partie : arrêtez le serveur et supprimez `scores.json` (ou utilisez « Remettre les scores à zéro »).
+- Après un changement de manche ou un redémarrage, R ne rejoue pas l’extrait d’une question déjà révélée.
 - Spotify : si le même compte est utilisé ailleurs en même temps (téléphone), il prend la main sur la lecture.
 - Création et la Régie sont deux appareils Spotify du même compte : écouter un titre dans Création pendant la soirée coupe la lecture de la Régie.
 - Spotify n’est pas garanti sur Safari (Chrome recommandé).

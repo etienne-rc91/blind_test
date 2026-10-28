@@ -1,7 +1,7 @@
 # Extrait musical dans une question QCM — conception
 
 Date : 2026-10-28
-Statut : à valider
+Statut : construit le 2026-10-28
 
 ## 1. Intention
 
