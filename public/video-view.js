@@ -6,7 +6,7 @@
   const USUAL = { main: null, strip: null, cover: null };
   const STAGE_LABELS = { setup: 'Installation', summary: 'Bilan', final: 'Fin' };
 
-  // Que montre le Grand écran ? main : null = affichage habituel (pas de passage vidéo, ou pas l’étape Jeu).
+  // Que montre le Grand écran ? main : null = affichage habituel (pas de passage vidéo, pas l’étape Jeu, ou morceau conclu à l’arrêt).
   // playingNow : la page lit réellement la vidéo (l’image avance).
   function screenView({ stage, phase, song, qcm, playingNow }) {
     if (stage !== 'play' || !song || !song.video) return { ...USUAL };
@@ -22,7 +22,7 @@
 
     if (playingNow) return { main: 'video', strip: song.reveal ? 'reveal' : null, cover: null };
     if (phase === 'buzzed') return { main: 'banner', strip: null, cover: null };
-    if (song.reveal) return { main: 'reveal', strip: null, cover: null };
+    if (song.reveal) return { ...USUAL };   // conclu : révélation au-dessus du classement, comme un morceau audio
     return { main: 'cover', strip: null, cover: `🎬 Morceau ${song.number} / ${song.total}` };
   }
 

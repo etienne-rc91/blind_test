@@ -61,9 +61,6 @@
   #banner.full { flex: 1; min-height: 0; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 3vh; }
   #banner.full .who { font-size: 16vh; }
   #banner.full .sub { font-size: 4vh; }
-  #reveal.full { flex: 1; max-height: none; }
-  #reveal.full #revealCover { height: 50vh; width: 50vh; }
-  #reveal.full .ans { font-size: 12vh; -webkit-line-clamp: 4; }
   #videoZone { flex: 1; min-height: 0; position: relative; border-radius: 2vh; overflow: hidden; background: #000; }
   #videoZone[hidden] { display: none; }
   #videoStage, #videoStage .vp { position: absolute; inset: 0; }
@@ -403,8 +400,7 @@ function renderPlay() {
   $('ranking').hidden = inQuestion || main !== null;
   const reveal = inQuestion ? null : state.song?.reveal;
   $('banner').hidden = inQuestion || (!!reveal && main !== 'banner');
-  renderReveal(main === null || main === 'reveal' ? reveal : null);
-  $('reveal').classList.toggle('full', main === 'reveal');
+  renderReveal(main === null ? reveal : null);
   renderVideoZone(view, reveal, inQuestion ? q : null);
   $('playTitle').firstChild.textContent = 'Blind test';
   const sec0 = state.sections[state.currentSection];
