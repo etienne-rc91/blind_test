@@ -71,7 +71,8 @@
   #qcmView[hidden], #banner[hidden], #ranking[hidden] { display: none; }
   #qBody { flex: 1; min-height: 0; display: flex; gap: 3vw; align-items: center; justify-content: center; }
   #qImg { max-height: 100%; max-width: 50%; object-fit: contain; border-radius: 1.6vh; }
-  #qImg[hidden], #qText[hidden] { display: none; }
+  #qImg[hidden], #qText[hidden], #qListen[hidden] { display: none; }
+  #qListen { font-size: 9vh; font-weight: 800; color: var(--muted); animation: listen 1.6s ease-in-out infinite; }
   #qText { font-size: 6.4vh; font-weight: 800; line-height: 1.1; margin: 0; text-align: center; max-width: 30ch; overflow-wrap: anywhere; }
   #qChoices { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6vh 2vw; }
   #qChoices[hidden] { display: none; }
@@ -118,6 +119,7 @@
   #lost[hidden] { display: none; }
 
   @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @keyframes listen { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   @keyframes flash { from { transform: scale(1.04); } to { transform: scale(1); } }
   @keyframes bump { 0% { color: var(--green); transform: scale(1.4); } 100% { transform: scale(1); } }
   @keyframes rise { from { transform: translateY(20vh); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -147,7 +149,7 @@
   <div id="reveal" hidden><img id="revealCover" alt="" hidden><div class="txt"><p class="lbl">La réponse</p><p class="ans" id="revealAnswer"></p></div></div>
   <ol id="ranking"></ol>
   <div id="qcmView" hidden>
-    <div id="qBody"><img id="qImg" alt=""><p id="qText"></p></div>
+    <div id="qBody"><img id="qImg" alt=""><p id="qText"></p><p id="qListen" hidden>♪ Écoutez…</p></div>
     <div id="qChoices"></div>
     <div id="qFoot"><span id="qTimer"></span><span id="qInfo"></span></div>
   </div>
@@ -298,13 +300,15 @@ function renderRanking(bannerText, bannerSub) {
 }
 
 function renderQuestion(q) {
-  const qq = q.question;
+  // Aux étapes intro et écoute, la question n’est pas encore envoyée : ni texte ni image.
+  const qq = q.question ?? {};
   $('playTitle').firstChild.textContent = `Question ${q.index + 1}/${q.total}`;
+  $('qListen').hidden = !q.listening;
   const img = $('qImg');
   img.hidden = !qq.image;
   if (qq.image) { const src = `/images/${encodeURIComponent(qq.image)}`; if (img.getAttribute('src') !== src) img.src = src; }
   $('qText').hidden = !qq.text;
-  $('qText').textContent = qq.text;
+  $('qText').textContent = qq.text ?? '';
 
   const box = $('qChoices');
   box.hidden = !qq.choices;
