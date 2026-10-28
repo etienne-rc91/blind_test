@@ -433,7 +433,8 @@ function songSub() {
   const s = state.song;
   if (!s) return null;
   if (!s.playing) return '';
-  return s.number == null ? '♪ Morceau en cours' : `♪ Morceau ${s.number} / ${s.total}`;
+  const mark = s.video ? '🎬' : '♪';   // morceau vidéo : même marque que son cache
+  return s.number == null ? `${mark} Morceau en cours` : `${mark} Morceau ${s.number} / ${s.total}`;
 }
 
 // La vidéo n’est visible qu’en main === 'video' ; en 'cover', un cache neutre la couvre entièrement.
