@@ -323,7 +323,8 @@ app.use('/api', api);
 const reply = (ack) => (typeof ack === 'function' ? ack : () => {});
 const HOST_ACTIONS = ['open', 'close', 'correct', 'wrong', 'unexclude', 'score', 'kick', 'reset-scores', 'stage', 'join-ip', 'section', 'qcm', 'countdown', 'replay'];
 
-// Une seule Régie joue le son : la dernière à agir (ou la première connectée). Question de réseau, pas de jeu.
+// Une seule Régie joue le son : la première connectée la garde. Elle ne change qu’avec « Le son sort ici »
+// ou quand elle se déconnecte (la plus ancienne Régie restante prend le relais). Question de réseau, pas de jeu.
 let soundOwner = null;
 function hostSockets() {
   return [...(io.sockets.adapter.rooms.get('hosts') || [])].map((id) => io.sockets.sockets.get(id)).filter(Boolean);
@@ -384,7 +385,6 @@ io.on('connection', (socket) => {
   for (const action of HOST_ACTIONS) {
     on(`host:${action}`, (payload) => {
       if (!isHost) return;
-      claimSound(socket.id);
       const res = game.host(action, payload);
       if (action === 'open') prefetchCover();
       for (const sid of res.kickedSockets || []) {
@@ -396,7 +396,6 @@ io.on('connection', (socket) => {
   }
   on('host:undo', () => {
     if (!isHost) return;
-    claimSound(socket.id);
     if (game.undo()) broadcast();
   });
 

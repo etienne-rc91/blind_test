@@ -102,7 +102,7 @@ Le Grand écran affiche la même adresse que celle choisie dans la Régie (menu 
 - À la fin du passage, la musique s’arrête et les buzzers restent ouverts.
 - Z ne relance jamais la musique.
 - Grand écran : `♪ Morceau n / total` pendant la lecture, puis la révélation (réponse, et pochette pour Spotify) jusqu’au morceau suivant.
-- Une seule Régie joue le son : le bouton « Le son sort ici » la désigne.
+- Une seule Régie joue le son : la première ouverte. Le bouton « Le son sort ici » la change.
 
 - ↺ (liste des équipes) : réouvre le buzzer d'une équipe exclue sur le morceau en cours.
 - Z : annule la dernière action de l'animateur (point, exclusion, remise à zéro, équipe retirée…). Plusieurs appuis remontent plus loin.
@@ -129,4 +129,4 @@ Le Grand écran affiche la même adresse que celle choisie dans la Régie (menu 
 - Spotify n’est pas garanti sur Safari (Chrome recommandé).
 - Si Spotify perd le morceau, la Régie affiche une erreur : concluez avec B ou F.
 - Pendant une panne Spotify, le morceau fichier suivant peut démarrer avec quelques secondes de retard.
-- Avec deux Régies ouvertes, la dernière qui agit joue le son.
+- Avec deux Régies ouvertes, la première ouverte garde le son, même si l’autre agit. Il ne change qu’avec « Le son sort ici », ou si cette Régie se ferme (le son passe alors à la plus ancienne Régie restante).
