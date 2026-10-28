@@ -1,6 +1,8 @@
 // Lecteurs de morceaux partagés par la Régie et la page Création (script classique, pas de module ni de build).
 // Players.create(source, opts) renvoie un lecteur qui expose la même interface quelle que soit la source :
-//   load(song), seek(sec), play(), pause(), position(), duration() (promesses) et onError(fn(message)).
+//   load(song), seek(sec), play(), pause(), position(), duration(), playing() (promesses) et onError(fn(message)).
+//   playing() n’est vrai que lorsque la lecture avance réellement.
+// Fichier audio : opts inutiles. Vidéo : opts = { container } ; l’élément <video> y est ajouté (sans contrôles, à 100 %).
 // Spotify : opts = { getToken, name } ; une seule instance par page ; prepare() démarre l’appareil à l’avance,
 // activate() est à appeler dans un geste de l’animateur.
 // Le lecteur ne décide de rien : la page appelle play / pause selon l’état reçu du serveur.
@@ -25,10 +27,10 @@
     4: 'fichier introuvable ou format non pris en charge',
   };
 
-  // Morceau fichier : un élément <audio> servi par le serveur local sous /musiques/<ref>. Pause instantanée, sans internet.
-  function createFilePlayer() {
-    const audio = document.createElement('audio');
-    audio.preload = 'auto';
+  const PROGRESS_CHECK = 150;   // ms entre deux lectures de currentTime pour constater que l’image avance
+
+  // Morceau fichier ou vidéo : un élément média servi par le serveur local sous baseUrl + <ref>. Pause instantanée, sans internet.
+  function createElementPlayer(audio, baseUrl) {
     let errorFn = () => {};
     let ref = null;
 
@@ -57,7 +59,7 @@
         // Même fichier (R, ou retour sur le même morceau) : on garde ce qui est déjà chargé, seul seek() repart de Début.
         if (song.ref !== ref || audio.error) {
           ref = song.ref;
-          audio.src = '/musiques/' + encodeURIComponent(song.ref);
+          audio.src = baseUrl + encodeURIComponent(song.ref);
           audio.load();
         }
         return Promise.resolve();
@@ -70,7 +72,11 @@
       play() {
         return audio.play().catch((e) => {
           if (e && e.name === 'AbortError') return;                 // un pause() a interrompu le play() : voulu
-          if (e && e.name === 'NotAllowedError') throw new Error('cliquez dans la page ou appuyez sur une touche pour activer le son');
+          if (e && e.name === 'NotAllowedError') {
+            const err = new Error('cliquez dans la page ou appuyez sur une touche pour activer le son');
+            err.notAllowed = true;                                   // la page peut proposer un clic d’activation
+            throw err;
+          }
           throw new Error(audio.error ? (MEDIA_ERRORS[audio.error.code] || 'erreur inconnue') : (e && e.message) || 'erreur inconnue');
         });
       },
@@ -84,10 +90,38 @@
       duration() {
         return Promise.resolve(Number.isFinite(audio.duration) ? audio.duration : null);
       },
+      // Vrai seulement si l’élément lit et que currentTime avance entre deux mesures (pas en pause, en attente de données ou à la fin).
+      playing() {
+        const running = () => !audio.paused && !audio.ended && audio.readyState >= 3;
+        if (!running()) return Promise.resolve(false);
+        const before = audio.currentTime;
+        return delay(PROGRESS_CHECK).then(() => running() && audio.currentTime > before);
+      },
       onError(fn) {
         errorFn = typeof fn === 'function' ? fn : () => {};
       },
     };
+  }
+
+  function createFilePlayer() {
+    const audio = document.createElement('audio');
+    audio.preload = 'auto';
+    return createElementPlayer(audio, '/musiques/');
+  }
+
+  // Passage vidéo : un <video> sans contrôles qui remplit `container`, servi sous /videos/<ref>.
+  function createVideoPlayer(opts = {}) {
+    if (!opts.container) throw new Error('Le lecteur vidéo a besoin d’un conteneur.');
+    const video = document.createElement('video');
+    video.preload = 'auto';
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    video.controls = false;
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.style.objectFit = 'contain';
+    opts.container.append(video);
+    return createElementPlayer(video, '/videos/');
   }
 
   // ---------- Spotify : la page devient un appareil Spotify (Web Playback SDK) ----------
@@ -296,6 +330,16 @@
         const st = started ? await ourState() : null;
         return st && st.duration ? st.duration / 1000 : null;
       },
+      // Vrai si le SDK annonce notre titre en lecture ; jamais d’erreur, faux tant que rien n’est lancé.
+      async playing() {
+        if (!started || !sdk) return false;
+        try {
+          const st = await ourState();
+          return !!st && !st.paused;
+        } catch {
+          return false;
+        }
+      },
       onError(fn) {
         errorFn = typeof fn === 'function' ? fn : () => {};
       },
@@ -305,6 +349,7 @@
 
   function create(source, opts) {
     if (source === 'file') return createFilePlayer(opts);
+    if (source === 'video') return createVideoPlayer(opts);
     if (source === 'spotify') return createSpotifyPlayer(opts);
     throw new Error('Source inconnue : ' + source);
   }
