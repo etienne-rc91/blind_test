@@ -74,9 +74,11 @@ Dans la Régie, un seul bouton suit le déroulé, raccourci **Entrée** :
 
 La durée du compte à rebours se règle dans le bloc « Manches » (20 s par défaut, de 5 à 120 s).
 Z annule la dernière action : annuler « Lancer le compte à rebours » l'arrête et efface les réponses reçues ; annuler « Révéler » retire les points. Un double appui sur Entrée ne saute pas d'étape.
-Pendant une manche QCM, Espace, B, M et F sont sans effet.
+Pendant une manche QCM, Espace, B, M et F sont sans effet. R rejoue l’extrait d’une question qui en a un.
 
 ### Question avec extrait
+**Préparation (Création)** : dans l’éditeur d’une question QCM, le bloc « Extrait (facultatif) » propose **+ Fichier** et **+ Spotify** (en ajouter un remplace l’extrait existant), la barre de temps Début/Fin et « Écouter le passage », comme pour les morceaux (voir « Morceaux »), et « Retirer l’extrait ». Une question avec extrait porte un ♪ dans la liste des questions.
+
 Une question qui a un extrait (♪ dans la liste de Création) s’ouvre autrement : la salle écoute d’abord, puis découvre la question.
 1. Entrée affiche la page de la question, sans texte.
 2. Entrée (« Lancer l’extrait ») joue l’extrait. Le Grand écran affiche « ♪ Écoutez… », les Buzzers « ♪ Écoutez l’extrait… ». Pendant l’extrait, Entrée est ignorée.
@@ -85,7 +87,7 @@ Une question qui a un extrait (♪ dans la liste de Création) s’ouvre autreme
 - **R** (« Rejouer l’extrait ») rejoue l’extrait depuis Début, à n’importe quelle étape après le lancement, même pendant le compte à rebours ou après la révélation. Cela ne change rien d’autre, et le compte à rebours ne coupe pas l’extrait. « Question suivante », un changement de manche ou d’étape du Grand écran l’arrêtent.
 - **« Afficher la question »** (bouton, pendant l’extrait) coupe l’extrait et affiche la question. Utile si l’extrait est trop long, ou si la lecture est impossible (fichier introuvable, Spotify déconnecté) : la question n’est jamais bloquée.
 - **Z** annule « Afficher la question » (retour à l’écoute, musique coupée ; R la relance). Z ne relance jamais la musique.
-- Après un redémarrage du serveur, une question non révélée repart à la page de la question.
+- Après un redémarrage du serveur, une question non révélée repart au début : le Grand écran montre le classement (« Question N/M dans un instant »), et Entrée reprend depuis la page de la question.
 
 ## Grand écran
 Le Grand écran est la page projetée derrière l'animateur, face aux équipes. Il n'a aucun bouton : c'est la Régie qui choisit ce qu'il affiche.
