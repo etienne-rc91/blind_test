@@ -58,6 +58,28 @@
   #ranking .score { font-weight: 800; font-variant-numeric: tabular-nums; }
   #ranking .score.bump { animation: bump 500ms ease-out; }
 
+  /* QCM */
+  #qcmView { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 3vh; }
+  #qcmView[hidden], #banner[hidden], #ranking[hidden] { display: none; }
+  #qBody { flex: 1; min-height: 0; display: flex; gap: 3vw; align-items: center; justify-content: center; }
+  #qImg { max-height: 100%; max-width: 50%; object-fit: contain; border-radius: 1.6vh; }
+  #qImg[hidden], #qText[hidden] { display: none; }
+  #qText { font-size: 6.4vh; font-weight: 800; line-height: 1.1; margin: 0; text-align: center; max-width: 30ch; overflow-wrap: anywhere; }
+  #qChoices { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6vh 2vw; }
+  #qChoices[hidden] { display: none; }
+  .choice { display: flex; align-items: center; gap: 2vw; background: var(--panel); border-radius: 1.6vh; padding: 1.6vh 2vw; font-size: 4.4vh; font-weight: 700; transition: opacity 400ms; min-width: 0; }
+  .choice .l { flex: none; width: 7vh; height: 7vh; border-radius: 1.2vh; display: grid; place-items: center; color: #fff; font-weight: 800; }
+  .choice[data-l="A"] .l { background: #d7263d; } .choice[data-l="B"] .l { background: #1f6fd1; }
+  .choice[data-l="C"] .l { background: #c98a00; } .choice[data-l="D"] .l { background: #1f9d63; }
+  .choice .t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .choice .n { color: var(--muted); font-size: 3vh; white-space: nowrap; }
+  .choice.good { outline: .6vh solid var(--green); }
+  .choice.dim { opacity: .3; }
+  #qFoot { display: flex; align-items: center; justify-content: space-between; gap: 3vw; min-height: 11vh; }
+  #qTimer { font-size: 11vh; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+  #qTimer.low { color: var(--red); }
+  #qInfo { font-size: 3.6vh; color: var(--muted); font-weight: 700; }
+
   /* Bilan */
   #summary .wrap { flex: 1; min-height: 0; overflow: hidden; }
   table { width: 100%; border-collapse: separate; border-spacing: 0 1vh; font-size: 4vh; }
@@ -115,6 +137,11 @@
   <h1 id="playTitle"><small>Blind test</small>Classement</h1>
   <div id="banner"><span class="who"></span><span class="sub"></span></div>
   <ol id="ranking"></ol>
+  <div id="qcmView" hidden>
+    <div id="qBody"><img id="qImg" alt=""><p id="qText"></p></div>
+    <div id="qChoices"></div>
+    <div id="qFoot"><span id="qTimer"></span><span id="qInfo"></span></div>
+  </div>
 </section>
 
 <section class="stage" id="summary" hidden>
@@ -139,7 +166,12 @@ const prevScores = new Map();
 socket.on('connect', () => { $('lost').hidden = true; });
 socket.on('disconnect', () => { $('lost').hidden = false; });
 socket.on('info', (i) => { info = i; render(); });
-socket.on('state', (s) => { state = s; render(); });
+let qDeadline = 0, qTick = null;
+socket.on('state', (s) => {
+  // Temps restant relatif : l'horloge du PC de projection n'a pas besoin d'être réglée.
+  if (s.qcm?.step === 'countdown') qDeadline = Date.now() + s.qcm.remainingMs;
+  state = s; render();
+});
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const pts = (n) => `${n} point${Math.abs(n) > 1 ? 's' : ''}`;
@@ -176,6 +208,17 @@ function renderSetup() {
 }
 
 function renderPlay() {
+  const q = state.qcm;
+  const inQuestion = !!q && q.step !== 'idle';
+  $('qcmView').hidden = !inQuestion;
+  $('ranking').hidden = inQuestion;
+  $('banner').hidden = inQuestion;
+  $('playTitle').firstChild.textContent = 'Blind test';
+  const sec0 = state.sections[state.currentSection];
+  $('playTitle').lastChild.textContent = state.sections.length > 1 ? `Manche ${state.currentSection + 1} : ${sec0.name}` : sec0.name === 'Manche 1' ? 'Classement' : sec0.name;
+  if (inQuestion) return renderQuestion(q);
+  cancelAnimationFrame(qTick);
+  if (q) return renderRanking(q.index >= q.total ? 'Fin de la manche' : `Question ${q.index + 1}/${q.total} dans un instant`, '');
   const b = $('banner'), who = b.querySelector('.who'), sub = b.querySelector('.sub');
   const first = state.buzzes[0];
   b.className = state.phase;
@@ -191,9 +234,18 @@ function renderPlay() {
     who.textContent = state.round ? 'En attente du prochain morceau' : 'La partie va commencer';
     sub.textContent = state.round ? `Morceau ${state.round} terminé` : '';
   }
+  renderRanking();
+}
 
-  const sec = state.sections[state.currentSection];
-  $('playTitle').lastChild.textContent = state.sections.length > 1 ? `Manche ${state.currentSection + 1} : ${sec.name}` : sec.name === 'Manche 1' ? 'Classement' : sec.name;
+function renderRanking(bannerText, bannerSub) {
+  if (bannerText != null) {
+    const b = $('banner');
+    b.className = '';
+    b.querySelector('.who').textContent = bannerText;
+    b.querySelector('.sub').textContent = bannerSub;
+  }
+  const first = state.qcm ? null : state.buzzes[0];
+
   const ol = $('ranking'); ol.innerHTML = '';
   // Au moins 7 lignes de place : peu d'équipes → lignes confortables, beaucoup → elles se resserrent.
   ol.style.gridTemplateRows = `repeat(${Math.max(7, state.teams.length)}, minmax(0, 1fr))`;
@@ -206,6 +258,56 @@ function renderPlay() {
     prevScores.set(t.id, t.score);
     li.append(el('span', 'place', t.place), el('span', 'name', t.name), score);
     ol.append(li);
+  }
+}
+
+function renderQuestion(q) {
+  const qq = q.question;
+  $('playTitle').firstChild.textContent = `Question ${q.index + 1}/${q.total}`;
+  const img = $('qImg');
+  img.hidden = !qq.image;
+  if (qq.image) { const src = `/images/${encodeURIComponent(qq.image)}`; if (img.getAttribute('src') !== src) img.src = src; }
+  $('qText').hidden = !qq.text;
+  $('qText').textContent = qq.text;
+
+  const box = $('qChoices');
+  box.hidden = !qq.choices;
+  box.innerHTML = '';
+  if (qq.choices) {
+    for (const l of ['A', 'B', 'C', 'D']) {
+      const c = el('div', 'choice');
+      c.dataset.l = l;
+      c.append(el('span', 'l', l), el('span', 't', qq.choices[l]));
+      if (q.step === 'revealed') {
+        c.classList.add(q.answer === l ? 'good' : 'dim');
+        const n = q.counts?.[l] ?? 0;
+        c.append(el('span', 'n', `${n} équipe${n > 1 ? 's' : ''}`));
+      }
+      box.append(c);
+    }
+  }
+
+  const timer = $('qTimer'), info = $('qInfo');
+  cancelAnimationFrame(qTick);
+  timer.className = '';
+  if (q.step === 'countdown') {
+    const loop = () => {
+      const left = Math.max(0, Math.ceil((qDeadline - Date.now()) / 1000));
+      timer.textContent = left;
+      timer.classList.toggle('low', left <= 5);
+      if (left > 0) qTick = requestAnimationFrame(loop);
+    };
+    loop();
+    info.textContent = `${q.answeredCount}/${q.teamCount} équipe${q.teamCount > 1 ? 's ont' : ' a'} répondu`;
+  } else if (q.step === 'locked') {
+    timer.textContent = 'Temps écoulé';
+    info.textContent = `${q.answeredCount}/${q.teamCount} équipe${q.teamCount > 1 ? 's ont' : ' a'} répondu`;
+  } else if (q.step === 'revealed') {
+    timer.textContent = `Réponse ${q.answer}`;
+    info.textContent = '';
+  } else {
+    timer.textContent = '';
+    info.textContent = '';
   }
 }
 

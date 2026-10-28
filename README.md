@@ -16,12 +16,28 @@ Une soirée se découpe en manches (« Cinéma », « Années 80 »…). Les poi
 1. Préparez un fichier CSV (Excel : « Enregistrer sous » → CSV, en UTF-8 ou non, séparateur `;` ou `,`). Partez de `exemple-soiree.csv`.
 2. Première ligne obligatoire : `manche;type;question;image;A;B;C;D;reponse`.
 3. Une manche **buzzer** tient sur une ligne : son nom et `buzzer`, le reste vide. L'ordre des lignes est l'ordre de la soirée.
+   Une manche **QCM** a une ligne par question, avec le même nom de manche sur chaque ligne : `question` (texte) et/ou `image`, les propositions `A` à `D`, et la bonne réponse dans `reponse` (A, B, C ou D). Exemple :
+   `Culture G;qcm;Qui est cet acteur ?;acteur1.jpg;Brad Pitt;Tom Cruise;Johnny Depp;Keanu Reeves;C`
 4. Dans la Régie, bloc « Manches » : « Importer les manches (CSV) ». En cas d'erreur, le message indique la ligne à corriger ; corrigez et réimportez.
 5. Pendant la soirée, « Suivante ▶ » passe à la manche suivante (les buzzers se ferment). Les points donnés vont dans la manche en cours.
 
 Sans fichier, la soirée se joue avec une seule manche, « Manche 1 », comme avant.
 Réimporter un fichier est refusé dès qu'un point a été donné : utilisez d'abord « Remettre les scores à zéro » (qui revient aussi à la première manche).
-Les images des futures manches QCM iront dans le dossier `images/`, à côté du serveur.
+Les images des questions QCM se placent dans le dossier `images/`, à côté du serveur ; la colonne `image` contient seulement le nom du fichier (pas d'adresse web : il n'y a pas internet en salle). L'import vérifie que chaque image existe.
+
+## Manches QCM
+Toutes les équipes répondent en même temps, A, B, C ou D, sur leur Buzzer (seules les lettres y apparaissent ; les propositions sont sur le Grand écran). 1 point par bonne réponse.
+
+Dans la Régie, un seul bouton suit le déroulé, raccourci **Entrée** :
+1. Afficher la question (image et/ou texte sur le Grand écran).
+2. Afficher les propositions.
+3. Lancer le compte à rebours : les équipes choisissent, et peuvent changer d'avis jusqu'à la fin. Le Grand écran montre combien d'équipes ont répondu, pas quoi. La Régie voit chaque réponse.
+4. À zéro, les réponses sont bloquées. Révéler la réponse : les points sont donnés, le Grand écran montre la bonne proposition et le nombre d'équipes par lettre.
+5. Question suivante : le Grand écran revient au classement.
+
+La durée du compte à rebours se règle dans le bloc « Manches » (20 s par défaut, de 5 à 120 s).
+Z annule la dernière action : annuler « Lancer le compte à rebours » l'arrête et efface les réponses reçues ; annuler « Révéler » retire les points. Un double appui sur Entrée ne saute pas d'étape.
+Pendant une manche QCM, Espace, B, M et F sont sans effet.
 
 ## Grand écran
 Le Grand écran est la page projetée derrière l'animateur, face aux équipes. Il n'a aucun bouton : c'est la Régie qui choisit ce qu'il affiche.

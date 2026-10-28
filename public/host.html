@@ -48,6 +48,29 @@
   #order li { background: var(--panel); border: 2px solid var(--line); border-radius: 8px; padding: 6px 12px; }
   #order li span { color: var(--muted); margin-left: 6px; }
 
+  /* Panneau QCM */
+  #qcmPanel { display: flex; flex-direction: column; gap: 16px; }
+  #qcmPanel[hidden], #first[hidden], .controls[hidden], #order[hidden] { display: none; }
+  .qbox { background: var(--panel); border: 3px solid var(--line); border-radius: 18px; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
+  #qHead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; color: var(--muted); font-size: 1.1rem; }
+  #qHead b { color: var(--ink); font-size: 1.4rem; }
+  #qText { font-size: 2rem; font-weight: 800; margin: 0; overflow-wrap: anywhere; }
+  #qImage { color: var(--muted); margin: 0; }
+  #qChoices { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  #qChoices li { border: 2px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 1.15rem; overflow-wrap: anywhere; }
+  #qChoices li.good { border-color: var(--green); color: var(--green); font-weight: 800; }
+  #qChoices li span { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  #qTimer { font-size: 1.3rem; font-weight: 700; }
+  #qAnswers { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+  #qAnswers li { border: 2px solid var(--line); border-radius: 8px; padding: 4px 10px; }
+  #qAnswers li.none { color: var(--muted); border-style: dashed; }
+  #qAnswers li.good { border-color: var(--green); }
+  #qAnswers li.bad { border-color: var(--red); }
+  #qMain { font: inherit; font-size: 1.4rem; font-weight: 800; padding: 18px; border-radius: 14px; border: 0; background: var(--ink); color: var(--bg); cursor: pointer; }
+  #qMain kbd { font: inherit; font-size: .9rem; font-weight: 400; opacity: .7; margin-left: 10px; }
+  .cd { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: .95rem; }
+  .cd input { width: 4.5em; font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+
   /* Côté */
   aside { display: flex; flex-direction: column; gap: 20px; }
   .card { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 16px; }
@@ -94,6 +117,17 @@
       <button id="bUndo" title="Annuler la dernière action de l’animateur">Annuler<kbd>Z</kbd></button>
     </div>
     <ol id="order" aria-label="Ordre des buzz"></ol>
+    <div id="qcmPanel" hidden>
+      <div class="qbox">
+        <div id="qHead"><b id="qNum"></b><span id="qStep"></span></div>
+        <p id="qText"></p>
+        <p id="qImage"></p>
+        <ul id="qChoices"></ul>
+        <div id="qTimer" aria-live="polite"></div>
+        <ul id="qAnswers" aria-label="Réponses des équipes"></ul>
+      </div>
+      <button id="qMain"></button>
+    </div>
     <span id="sound">Le son s’active au premier clic ou à la première touche.</span>
   </section>
 
@@ -115,6 +149,7 @@
         <button id="prevSection" title="Manche précédente">◀ Précédente</button>
         <button id="nextSection" title="Manche suivante">Suivante ▶</button>
       </div>
+      <label class="cd">Compte à rebours QCM : <input type="number" id="cdSec" min="5" max="120" step="1"> s</label>
       <button class="small" id="importBtn">Importer les manches (CSV)</button>
       <input type="file" id="importFile" accept=".csv,text/csv" hidden>
       <p id="importMsg" role="status"></p>
@@ -176,14 +211,41 @@ $('importFile').onchange = async () => {
 };
 for (const b of document.querySelectorAll('[data-stage]')) b.onclick = () => act('host:stage', { stage: b.dataset.stage });
 $('resetScores').onclick = () => { if (confirm('Remettre tous les scores à zéro ?')) act('host:reset-scores'); };
+// ----- QCM -----
+// Une seule action possible à chaque étape ; le serveur ignore une action envoyée deux fois.
+const QCM_NEXT = {
+  idle: { action: 'show-question', label: 'Afficher la question' },
+  question: { action: 'show-choices', label: 'Afficher les propositions' },
+  choices: { action: 'start', label: 'Lancer le compte à rebours' },
+  countdown: { action: null, label: 'Compte à rebours en cours…' },
+  locked: { action: 'reveal', label: 'Révéler la réponse' },
+  revealed: { action: 'next', label: 'Question suivante' },
+};
+const STEP_LABEL = {
+  idle: 'Classement affiché', question: 'Question affichée', choices: 'Propositions affichées',
+  countdown: 'Compte à rebours', locked: 'Temps écoulé', revealed: 'Réponse révélée',
+};
+function qcmNext() {
+  const q = state?.qcm;
+  if (!q || (q.step === 'idle' && q.index >= q.total)) return null;
+  return QCM_NEXT[q.step].action;
+}
+$('qMain').onclick = () => { const a = qcmNext(); if (a) act('host:qcm', { action: a }); };
+$('cdSec').onchange = () => act('host:countdown', { seconds: Number($('cdSec').value) });
+let qDeadline = 0, qTick = null;
+
 addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.repeat) return;
   const k = e.key.toLowerCase();
+  if (k === 'z') return act('host:undo');
+  if (state?.qcm) {
+    if (k === 'enter') { e.preventDefault(); $('qMain').click(); }
+    return;
+  }
   if (k === ' ') { e.preventDefault(); act('host:open'); }
   else if (k === 'b') act('host:correct');
   else if (k === 'm') act('host:wrong');
   else if (k === 'f') act('host:close');
-  else if (k === 'z') act('host:undo');
 });
 
 // ----- Réseau -----
@@ -206,10 +268,65 @@ function showJoin(ip) {
   $('url').textContent = `${ip}:${port}`;
 }
 
-socket.on('state', (s) => { state = s; render(); });
+socket.on('state', (s) => {
+  if (s.qcm?.step === 'countdown') qDeadline = Date.now() + s.qcm.remainingMs;
+  state = s; render();
+});
 
 // ----- Rendu -----
+function renderQcm(q) {
+  const sec = state.sections[state.currentSection];
+  const done = q.index >= q.total;
+  $('qNum').textContent = done ? `${sec.name} : manche terminée` : `${sec.name} · Question ${q.index + 1}/${q.total}`;
+  $('qStep').textContent = done ? '' : `Grand écran : ${STEP_LABEL[q.step]}`;
+  const qq = q.question;
+  $('qText').textContent = qq?.text || (done ? 'Passez à la manche suivante dans le bloc « Manches ».' : q.step === 'idle' ? 'Prochaine question prête.' : '');
+  $('qImage').textContent = qq?.image ? `Image : ${qq.image}` : '';
+  const ul = $('qChoices'); ul.innerHTML = '';
+  const counts = { A: 0, B: 0, C: 0, D: 0 };
+  for (const l of Object.values(q.answers || {})) counts[l] += 1;
+  if (qq?.choices) {
+    for (const l of ['A', 'B', 'C', 'D']) {
+      const li = document.createElement('li');
+      li.textContent = `${l}. ${qq.choices[l]}`;
+      if (l === q.answer) { li.className = 'good'; li.textContent += ' ✓'; }
+      const n = document.createElement('span'); n.textContent = counts[l] ? `(${counts[l]})` : '';
+      li.append(n);
+      ul.append(li);
+    }
+  }
+  clearInterval(qTick); qTick = null;
+  const timer = $('qTimer');
+  if (q.step === 'countdown') {
+    const show = () => { timer.textContent = `${Math.max(0, Math.ceil((qDeadline - Date.now()) / 1000))} s · ${q.answeredCount}/${q.teamCount} équipes ont répondu`; };
+    show(); qTick = setInterval(show, 250);
+  } else timer.textContent = RUNNING_STEPS.includes(q.step) ? `${q.answeredCount}/${q.teamCount} équipes ont répondu` : '';
+  const al = $('qAnswers'); al.innerHTML = '';
+  if (RUNNING_STEPS.includes(q.step)) {
+    for (const t of state.teams) {
+      const li = document.createElement('li');
+      const a = q.answers[t.id];
+      li.textContent = `${t.name} : ${a || '—'}`;
+      li.className = !a ? 'none' : q.step === 'revealed' ? (a === q.answer ? 'good' : 'bad') : '';
+      al.append(li);
+    }
+  }
+  const nx = QCM_NEXT[q.step];
+  $('qMain').innerHTML = '';
+  $('qMain').append(done ? 'Manche terminée' : nx.label);
+  if (qcmNext()) { const kb = document.createElement('kbd'); kb.textContent = 'Entrée'; $('qMain').append(kb); }
+  $('qMain').disabled = !qcmNext();
+}
+const RUNNING_STEPS = ['countdown', 'locked', 'revealed'];
+
 function render() {
+  const inQcm = !!state.qcm;
+  $('qcmPanel').hidden = !inQcm;
+  $('first').hidden = inQcm;
+  document.querySelector('.controls').hidden = inQcm;
+  $('order').hidden = inQcm;
+  if (document.activeElement !== $('cdSec')) $('cdSec').value = state.countdownSec;
+  if (inQcm) renderQcm(state.qcm); else { clearInterval(qTick); qTick = null; }
   const f = $('first'), who = f.querySelector('.who'), sub = f.querySelector('.sub');
   const first = state.buzzes[0];
   f.className = state.phase;

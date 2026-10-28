@@ -59,7 +59,21 @@
   #game[hidden], #join[hidden] { display: none; }
   #game { display: flex; flex-direction: column; align-items: center; gap: 24px; }
   #change { font: inherit; background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 8px; }
-  @media (prefers-reduced-motion: reduce) { #buzz { transition: none; } }
+  /* QCM : quatre gros boutons, lettres seules (les propositions sont sur le Grand écran) */
+  #choices { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; width: min(86vw, 60vh); }
+  #choices[hidden] { display: none; }
+  #choices button {
+    aspect-ratio: 1; border: 0; border-radius: 22px; font: inherit; font-size: clamp(2.6rem, 16vw, 4.6rem); font-weight: 800;
+    color: #fff; background: var(--c); box-shadow: 0 8px 0 rgba(0,0,0,.28); transition: transform 60ms, opacity 150ms;
+  }
+  #choices button[data-l="A"] { --c: #d7263d; } #choices button[data-l="B"] { --c: #1f6fd1; }
+  #choices button[data-l="C"] { --c: #c98a00; } #choices button[data-l="D"] { --c: #1f9d63; }
+  #choices button:disabled { opacity: .35; }
+  #choices button.picked { opacity: 1; outline: 6px solid var(--ink); outline-offset: 4px; transform: translateY(4px); box-shadow: 0 4px 0 rgba(0,0,0,.28); }
+  #choices button.good { opacity: 1; outline: 6px solid #2bb673; outline-offset: 4px; }
+  #choices.revealed button:not(.good) { opacity: .2; }
+  #choices.revealed button.picked:not(.good) { opacity: .6; outline-color: var(--red); }
+  @media (prefers-reduced-motion: reduce) { #buzz, #choices button { transition: none; } }
 </style>
 </head>
 <body>
@@ -75,6 +89,9 @@
 
   <section id="game" hidden>
     <button id="buzz" disabled>…</button>
+    <div id="choices" hidden role="group" aria-label="Votre réponse">
+      <button data-l="A">A</button><button data-l="B">B</button><button data-l="C">C</button><button data-l="D">D</button>
+    </div>
     <p id="status" aria-live="assertive"></p>
     <p id="score"></p>
     <button id="change" type="button">Changer d’équipe</button>
@@ -110,7 +127,13 @@ socket.on('connect', () => {
   if (teamName || saved) join(teamName || saved);       // reconnexion transparente
 });
 socket.on('disconnect', () => { $('conn').classList.remove('ok'); render(); });
-socket.on('state', (s) => { state = s; pending = false; render(); });
+socket.on('state', (s) => {
+  // Le temps restant est relatif : l'horloge du téléphone n'a pas besoin d'être à l'heure.
+  if (s.qcm?.step === 'countdown') deadline = Date.now() + s.qcm.remainingMs;
+  if (s.qcm?.step !== 'countdown') picked = null;
+  else if (s.qcm.myAnswer) picked = null;
+  state = s; pending = false; render();
+});
 socket.on('kicked', () => {
   try { localStorage.removeItem('buzzer-team'); } catch {}
   teamId = teamName = null; $('game').hidden = true; $('join').hidden = false;
@@ -131,6 +154,44 @@ $('buzz').addEventListener('pointerdown', (e) => {
 document.addEventListener('pointerup', () => $('buzz').classList.remove('pressed'));
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 
+// ----- QCM -----
+// Choix affiché tout de suite (avant la confirmation du serveur), puis remplacé par myAnswer reçu du serveur.
+let picked = null, deadline = 0, tick = null;
+for (const btn of document.querySelectorAll('#choices button')) {
+  btn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (btn.disabled) return;
+    picked = btn.dataset.l;
+    if (navigator.vibrate) navigator.vibrate(30);
+    socket.emit('answer', picked, () => {});
+    render();
+  });
+}
+
+function renderQcm(q) {
+  const box = $('choices'), st = $('status');
+  const mine = q.step === 'countdown' ? (picked ?? q.myAnswer) : q.myAnswer;
+  box.classList.toggle('revealed', q.step === 'revealed');
+  for (const btn of box.children) {
+    const l = btn.dataset.l;
+    btn.disabled = q.step !== 'countdown' || !socket.connected;
+    btn.classList.toggle('picked', mine === l);
+    btn.classList.toggle('good', q.step === 'revealed' && q.answer === l);
+  }
+  clearInterval(tick); tick = null;
+  if (!socket.connected) { st.textContent = 'Connexion perdue, reconnexion en cours'; return; }
+  if (q.step === 'countdown') {
+    const show = () => {
+      const s = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      st.textContent = mine ? `Réponse ${mine} · encore ${s} s pour changer` : `Choisissez votre réponse · ${s} s`;
+    };
+    show(); tick = setInterval(show, 250);
+  } else if (q.step === 'locked') st.textContent = mine ? `Réponse enregistrée : ${mine}` : 'Temps écoulé, pas de réponse';
+  else if (q.step === 'revealed') st.textContent = !mine ? `Pas de réponse. C’était ${q.answer}` : mine === q.answer ? 'Bonne réponse !' : `Raté, c’était ${q.answer}`;
+  else if (q.step === 'question' || q.step === 'choices') st.textContent = 'Regardez le grand écran, préparez-vous…';
+  else st.textContent = q.index >= q.total ? 'Fin de la manche' : 'Attendez la prochaine question';
+}
+
 // ----- Rendu -----
 function render() {
   if (!teamId || !state) return;
@@ -138,6 +199,10 @@ function render() {
   b.className = '';
   const me = state.teams.find((t) => t.id === teamId);
   $('score').textContent = me ? `${me.score} point${Math.abs(me.score) > 1 ? 's' : ''}` : '';
+  const isQcm = !!state.qcm;
+  b.hidden = isQcm; $('choices').hidden = !isQcm;
+  if (isQcm) return renderQcm(state.qcm);
+  clearInterval(tick); tick = null;
   const mine = state.buzzes.find((x) => x.teamId === teamId);
   const first = state.buzzes[0];
 
