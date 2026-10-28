@@ -8,7 +8,7 @@ Les téléphones servent de buzzers et le PC arbitre. Aucune dépendance à inte
     npm start                 # port 3000, clé hôte aléatoire
     HOST_KEY=secret npm start # clé fixe (PowerShell : $env:HOST_KEY="secret"; npm start)
 
-La console affiche l'URL joueur et l'URL animateur (`/host?key=…`). Ouvrez l'URL animateur sur le PC, et les joueurs scannent le QR code.
+La console affiche l'URL joueur, l'URL de la Régie (`/host?key=…`) et celle du Grand écran (`/screen`). Ouvrez la Régie et le Grand écran sur le PC ; les joueurs scannent le QR code affiché sur le Grand écran (étape Installation). La Régie rappelle l'adresse à taper dans le bloc « Rejoindre ».
 
 ## Préparer la soirée (manches)
 Une soirée se découpe en manches (« Cinéma », « Années 80 »…). Les points sont comptés par manche et le Bilan les affiche côte à côte.
@@ -18,7 +18,7 @@ Une soirée se découpe en manches (« Cinéma », « Années 80 »…). Les poi
 3. Une manche **buzzer** tient sur une ligne : son nom et `buzzer`, le reste vide. L'ordre des lignes est l'ordre de la soirée.
    Une manche **QCM** a une ligne par question, avec le même nom de manche sur chaque ligne : `question` (texte) et/ou `image`, les propositions `A` à `D`, et la bonne réponse dans `reponse` (A, B, C ou D). Exemple :
    `Culture G;qcm;Qui est cet acteur ?;acteur1.jpg;Brad Pitt;Tom Cruise;Johnny Depp;Keanu Reeves;C`
-4. Dans la Régie, bloc « Manches » : « Importer les manches (CSV) ». En cas d'erreur, le message indique la ligne à corriger ; corrigez et réimportez.
+4. Dans la Régie, bloc « Manches » : « Importer (CSV) ». En cas d'erreur, le message indique la ligne à corriger ; corrigez et réimportez.
 5. Pendant la soirée, « Suivante ▶ » passe à la manche suivante (les buzzers se ferment). Les points donnés vont dans la manche en cours.
 
 Sans fichier, la soirée se joue avec une seule manche, « Manche 1 », comme avant.

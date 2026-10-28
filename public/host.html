@@ -15,16 +15,17 @@
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif; font-size: 18px; }
-  .wrap { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; padding: 24px; min-height: 100vh; }
-  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+  /* Toute la Régie tient dans la fenêtre : seules les listes longues (équipes, manches) défilent dans leur bloc. */
+  .wrap { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; padding: 16px; height: 100vh; overflow: hidden; }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; height: auto; overflow: visible; } }
 
   /* Scène */
-  #stage { display: flex; flex-direction: column; gap: 20px; }
+  #stage { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
   #first {
-    flex: 1; min-height: 46vh; border-radius: 18px; background: var(--panel); border: 3px solid var(--line);
+    flex: 1; min-height: 0; border-radius: 18px; background: var(--panel); border: 3px solid var(--line);
     display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px;
   }
-  #first .who { font-size: clamp(3rem, 9vw, 8rem); font-weight: 800; line-height: .95; overflow-wrap: anywhere; }
+  #first .who { font-size: clamp(2.5rem, min(9vw, 15vh), 8rem); font-weight: 800; line-height: .95; overflow-wrap: anywhere; }
   #first .sub { font-size: 1.4rem; color: var(--muted); margin-top: 14px; }
   #first.open { border-color: var(--red); }
   #first.open .who { color: var(--red); }
@@ -44,14 +45,15 @@
   button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
   button:disabled { opacity: .4; cursor: default; }
 
-  #order { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 8px; min-height: 2.4em; }
+  #order { margin: 0; padding: 0; list-style: none; display: flex; gap: 8px; min-height: 2.4em; overflow-x: auto; flex: none; }
+  #order li { white-space: nowrap; }
   #order li { background: var(--panel); border: 2px solid var(--line); border-radius: 8px; padding: 6px 12px; }
   #order li span { color: var(--muted); margin-left: 6px; }
 
   /* Panneau QCM */
-  #qcmPanel { display: flex; flex-direction: column; gap: 16px; }
+  #qcmPanel { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
   #qcmPanel[hidden], #first[hidden], .controls[hidden], #order[hidden] { display: none; }
-  .qbox { background: var(--panel); border: 3px solid var(--line); border-radius: 18px; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
+  .qbox { background: var(--panel); border: 3px solid var(--line); border-radius: 18px; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; overflow: auto; }
   #qHead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; color: var(--muted); font-size: 1.1rem; }
   #qHead b { color: var(--ink); font-size: 1.4rem; }
   #qText { font-size: 2rem; font-weight: 800; margin: 0; overflow-wrap: anywhere; }
@@ -66,41 +68,51 @@
   #qAnswers li.none { color: var(--muted); border-style: dashed; }
   #qAnswers li.good { border-color: var(--green); }
   #qAnswers li.bad { border-color: var(--red); }
-  #qMain { font: inherit; font-size: 1.4rem; font-weight: 800; padding: 18px; border-radius: 14px; border: 0; background: var(--ink); color: var(--bg); cursor: pointer; }
+  #qMain { flex: none; font: inherit; font-size: 1.4rem; font-weight: 800; padding: 18px; border-radius: 14px; border: 0; background: var(--ink); color: var(--bg); cursor: pointer; }
   #qMain kbd { font: inherit; font-size: .9rem; font-weight: 400; opacity: .7; margin-left: 10px; }
-  .cd { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: .95rem; }
-  .cd input { width: 4.5em; font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  .cd { display: flex; align-items: center; gap: 6px; font-size: .9rem; color: var(--muted); }
+  .cd input { width: 3.4em; font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
 
   /* Côté */
-  aside { display: flex; flex-direction: column; gap: 20px; }
-  .card { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 16px; }
-  .card h2 { font-size: 1.2rem; margin: 0 0 10px; }
-  #qr { width: 100%; max-width: 220px; display: block; margin: 0 auto 10px; background: #fff; border-radius: 8px; padding: 6px; }
-  #url { font-size: 1.3rem; font-weight: 700; text-align: center; margin: 0; word-break: break-all; }
-  #ipPick { width: 100%; font: inherit; margin-top: 8px; padding: 6px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; }
+  aside { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .card { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 12px 14px; flex: none; }
+  .card h2 { font-size: 1.1rem; margin: 0 0 8px; }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .head h2 { margin: 0; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  /* Rejoindre : une ligne (le grand QR code est sur le Grand écran) */
+  #join { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  #join h2 { margin: 0; }
+  #url { font-size: 1.15rem; font-weight: 800; margin: 0; word-break: break-all; }
+  #ipPick { font: inherit; font-size: .85rem; padding: 2px 4px; max-width: 100%; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; }
+  /* Équipes : prend la hauteur restante et défile à l'intérieur */
+  #teamsCard { flex: 1; min-height: 120px; display: flex; flex-direction: column; }
+  #teamsCard .scroll { flex: 1; min-height: 0; overflow-y: auto; }
   table { width: 100%; border-collapse: collapse; }
-  td { padding: 6px 2px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  td { padding: 3px 2px; border-bottom: 1px solid var(--line); vertical-align: middle; }
   td.n { width: 100%; overflow-wrap: anywhere; }
   td.s { font-weight: 800; font-size: 1.3rem; text-align: right; padding-right: 8px; min-width: 2.2ch; }
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--off); margin-right: 8px; }
   .dot.on { background: var(--green); }
   tr.excl td.n { text-decoration: line-through; color: var(--muted); }
-  td button { font: inherit; width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+  td button { font: inherit; width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
   .empty { color: var(--muted); margin: 0; }
   .small { font: inherit; font-size: .9rem; background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; padding: 8px 0 0; }
   #sound { font-size: .9rem; color: var(--muted); }
-  .stages { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .stages button { font: inherit; font-weight: 700; padding: 10px 6px; border-radius: 10px; border: 2px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+  .stages { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .stages button { font: inherit; font-size: .95rem; font-weight: 700; padding: 8px 2px; border-radius: 10px; border: 2px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
   .stages button[aria-checked="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-  .hint { font-size: .9rem; color: var(--muted); margin: 10px 0 0; }
+  .hint { font-size: .85rem; color: var(--muted); margin: 0; font-weight: 400; }
   .hint a { color: inherit; }
-  #sections { margin: 0 0 10px; padding-left: 1.6em; }
-  #sections li { padding: 3px 0; color: var(--muted); }
+  #sections { margin: 0; padding-left: 1.6em; max-height: 120px; overflow-y: auto; position: relative; }   /* 4 lignes */
+  #sections li { padding: 2px 0; line-height: 26px; color: var(--muted); }
   #sections li.current { color: var(--ink); font-weight: 800; }
   #sections li .type { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; margin-left: 6px; color: var(--muted); font-weight: 400; }
-  .nav { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .nav button { font: inherit; font-size: .95rem; font-weight: 700; padding: 8px 6px; border-radius: 10px; border: 2px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
-  #importMsg { font-size: .9rem; margin: 6px 0 0; min-height: 1.2em; }
+  .nav { display: flex; gap: 6px; }
+  .nav button { font: inherit; font-size: .9rem; font-weight: 700; padding: 4px 10px; border-radius: 10px; border: 2px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+  #importMsg { font-size: .85rem; margin: 4px 0 0; }
+  #importMsg:empty { display: none; }
+  .small.inline { padding: 0; }
   #importMsg.err { color: var(--red); }
   #importMsg.ok { color: var(--green); }
 </style>
@@ -133,36 +145,40 @@
 
   <aside>
     <div class="card">
-      <h2>Grand écran</h2>
+      <div class="head"><h2>Grand écran</h2><span class="hint">sur le projecteur : <a id="screenLink" href="/screen" target="_blank">/screen</a></span></div>
       <div class="stages" role="radiogroup" aria-label="Étape affichée sur le Grand écran">
         <button data-stage="setup" role="radio">Installation</button>
         <button data-stage="play" role="radio">Jeu</button>
         <button data-stage="summary" role="radio">Bilan</button>
         <button data-stage="final" role="radio">Fin</button>
       </div>
-      <p class="hint">À ouvrir sur le projecteur : <a id="screenLink" href="/screen" target="_blank">/screen</a></p>
     </div>
     <div class="card">
-      <h2>Manches</h2>
-      <ol id="sections"></ol>
-      <div class="nav">
-        <button id="prevSection" title="Manche précédente">◀ Précédente</button>
-        <button id="nextSection" title="Manche suivante">Suivante ▶</button>
+      <div class="head">
+        <h2>Manches</h2>
+        <div class="nav">
+          <button id="prevSection" title="Manche précédente" aria-label="Manche précédente">◀</button>
+          <button id="nextSection" title="Manche suivante" aria-label="Manche suivante">Suivante ▶</button>
+        </div>
       </div>
-      <label class="cd">Compte à rebours QCM : <input type="number" id="cdSec" min="5" max="120" step="1"> s</label>
-      <button class="small" id="importBtn">Importer les manches (CSV)</button>
+      <ol id="sections"></ol>
+      <div class="row">
+        <button class="small inline" id="importBtn" title="Importer les manches depuis un fichier CSV">Importer (CSV)</button>
+        <label class="cd" title="Durée du compte à rebours des questions QCM">Compte à rebours QCM <input type="number" id="cdSec" min="5" max="120" step="1"> s</label>
+      </div>
       <input type="file" id="importFile" accept=".csv,text/csv" hidden>
       <p id="importMsg" role="status"></p>
     </div>
-    <div class="card">
+    <div class="card" id="teamsCard">
       <h2>Équipes</h2>
-      <table><tbody id="teams"></tbody></table>
-      <p class="empty" id="noTeam">Aucune équipe pour l’instant.</p>
+      <div class="scroll">
+        <table><tbody id="teams"></tbody></table>
+        <p class="empty" id="noTeam">Aucune équipe pour l’instant.</p>
+      </div>
       <button class="small" id="resetScores">Remettre les scores à zéro</button>
     </div>
-    <div class="card">
-      <h2>Rejoindre la partie</h2>
-      <img id="qr" alt="QR code de la page joueur">
+    <div class="card" id="join">
+      <h2>Rejoindre :</h2>
       <p id="url"></p>
       <select id="ipPick" aria-label="Interface réseau" hidden></select>
     </div>
@@ -266,7 +282,6 @@ socket.on('info', ({ ips, port: p }) => {
 });
 function showJoin(ip) {
   if (ip !== state?.joinIp && /^[\d.]+$|^localhost$/.test(ip)) act('host:join-ip', { ip });
-  $('qr').src = `/qr.svg?ip=${encodeURIComponent(ip)}`;
   $('url').textContent = `${ip}:${port}`;
 }
 
@@ -361,6 +376,11 @@ function render() {
     if (i === state.currentSection) li.className = 'current';
     sl.append(li);
   });
+  // La manche en cours reste visible même si la liste défile.
+  const curLi = sl.children[state.currentSection];
+  if (curLi && (curLi.offsetTop < sl.scrollTop || curLi.offsetTop + curLi.offsetHeight > sl.scrollTop + sl.clientHeight)) {
+    sl.scrollTop = curLi.offsetTop - sl.clientHeight / 2;
+  }
   $('prevSection').disabled = state.currentSection === 0;
   $('nextSection').disabled = state.currentSection >= state.sections.length - 1;
   for (const b of document.querySelectorAll('[data-stage]')) b.setAttribute('aria-checked', String(b.dataset.stage === state.stage));
