@@ -1,6 +1,6 @@
 # Blind test buzzer (réseau local)
 
-Les téléphones servent de buzzers et le PC arbitre. Aucune dépendance à internet pendant la soirée, sauf pour les morceaux Spotify (voir « Spotify »).
+Les téléphones servent de buzzers et le PC arbitre. Aucune dépendance à internet pendant la soirée, sauf pour les morceaux Spotify et YouTube (voir « Spotify » et « Vidéos »).
 
 ## Installation (à faire chez soi, avec internet)
     npm install
@@ -10,7 +10,7 @@ Les téléphones servent de buzzers et le PC arbitre. Aucune dépendance à inte
 
 Node 22.9 ou plus est nécessaire.
 
-**Paramètres dans un fichier** : copiez `.env.example` en `.env` (même dossier) et remplissez les valeurs voulues (clé hôte, port, Client ID Spotify, dossiers des parties, musiques et images…). `npm start` lit ce fichier au démarrage, sans rien taper de plus. Un paramètre donné dans la commande l’emporte sur le fichier. Le fichier `.env` n’est jamais commité.
+**Paramètres dans un fichier** : copiez `.env.example` en `.env` (même dossier) et remplissez les valeurs voulues (clé hôte, port, Client ID Spotify, dossiers des parties, musiques, vidéos et images…). `npm start` lit ce fichier au démarrage, sans rien taper de plus. Un paramètre donné dans la commande l’emporte sur le fichier. Le fichier `.env` n’est jamais commité.
 
 La console affiche l'URL joueur, l'URL de la Régie (`/host?key=…`) et celle du Grand écran (`/screen`) ; sur ce PC, elle les donne en `127.0.0.1` (l'adresse qu'accepte Spotify). Ouvrez la Régie et le Grand écran sur le PC ; les joueurs scannent le QR code affiché sur le Grand écran (étape Installation). La Régie rappelle l'adresse à taper dans le bloc « Rejoindre ».
 
@@ -52,7 +52,7 @@ Une manche buzzer qui contient des **morceaux** est jouée par la Régie : l’a
 - la **réponse** est pré-remplie (titre et artiste) et modifiable. Elle n’apparaît sur le Grand écran qu’à la révélation.
 
 **À la main dans le CSV** : une ligne par morceau, avec le même nom de manche, le type `buzzer` et les colonnes `musique;debut;fin` ; la réponse va dans `reponse`.
-- `musique` : le nom du fichier dans `musiques/`, ou `spotify:track:<id>` (un lien `https://open.spotify.com/track/…` fonctionne aussi) ;
+- `musique` : le nom du fichier audio dans `musiques/`, le nom d’un fichier vidéo dans `videos/` (mp4, webm, m4v ou mov), `spotify:track:<id>` (un lien `https://open.spotify.com/track/…` fonctionne aussi), ou une vidéo YouTube (lien `watch`, `youtu.be`, `shorts`, ou `youtube:<id>`, forme sous laquelle l’app l’écrit) ;
 - `debut` et `fin` : au format `m:ss`. Exemple :
   `Années 80;buzzer;;;;;;;Africa - Toto;africa.mp3;0:45;1:05`
 
@@ -65,6 +65,23 @@ Les morceaux Spotify demandent internet (et seulement eux) et un compte **Premiu
 5. Cliquez sur « Se connecter à Spotify » dans Création, puis cherchez vos titres avec **+ Spotify**.
 
 Les jetons sont gardés dans `spotify.json` (jamais commité). Une partie sans morceau Spotify ne charge rien depuis internet.
+
+## Vidéos (fichier ou YouTube)
+Un morceau ou un extrait QCM peut être une **vidéo**, jouée par le Grand écran (la musique de la vidéo sort du PC). Mêmes colonnes `musique;debut;fin` dans le CSV, sur une ligne de morceau comme sur une ligne `qcm` (extrait).
+
+**Préparer dans Création** :
+- **+ Vidéo** : choisir un fichier vidéo, copié dans le dossier `videos/` (mp4, webm, m4v ou mov ; 500 Mo maximum) ;
+- **+ YouTube** : coller le lien d’une vidéo, puis « Ajouter ». Pour un morceau buzzer, la réponse est pré-remplie avec le titre de la vidéo. Une vidéo privée, introuvable ou dont le propriétaire interdit la lecture ailleurs que sur YouTube est refusée ;
+- Début, Fin et « Écouter le passage » fonctionnent comme pour l’audio.
+
+**Avant la soirée** :
+1. Ouvrez le Grand écran sur le PC du serveur, à l’adresse `http://127.0.0.1:3000/screen` (et non l’IP du réseau), et mettez-le en plein écran sur le projecteur. Seul le dernier Grand écran ouvert ainsi joue les vidéos.
+2. **Cliquez une fois dans le Grand écran** : « Cliquez pour activer la vidéo ». Sans ce clic, le navigateur bloque le son et la vidéo ne démarre pas.
+3. Dans la Régie, mettez le Grand écran à l’étape **Jeu** : une vidéo ne se joue qu’à cette étape. La Régie prévient s’il n’y a pas de Grand écran, s’il n’est pas à l’étape Jeu ou s’il attend le clic.
+
+**Pendant la soirée** : la Régie ne montre jamais la vidéo, seulement la réponse, la progression et les erreurs. Sur le Grand écran, la vidéo n’est visible que pendant la lecture ; la réponse n’apparaît qu’à la révélation. Pour YouTube, la barre de titre est rognée, et une vidéo en 4:3 est légèrement rognée en haut et en bas (un fichier téléchargé évite cela). Des publicités YouTube peuvent apparaître au lancement.
+
+**Internet** : seuls les morceaux YouTube (et Spotify) en ont besoin. Les fichiers vidéo marchent hors ligne. « Jouer » prévient quand une partie contient des vidéos YouTube.
 
 ## Manches QCM
 Toutes les équipes répondent en même temps, A, B, C ou D, sur leur Buzzer (seules les lettres y apparaissent ; les propositions sont sur le Grand écran). 1 point par bonne réponse.
@@ -81,7 +98,7 @@ Z annule la dernière action : annuler « Lancer le compte à rebours » l'arrê
 Pendant une manche QCM, Espace, B, M et F sont sans effet. R rejoue l’extrait d’une question qui en a un.
 
 ### Question avec extrait
-**Préparation (Création)** : dans l’éditeur d’une question QCM, le bloc « Extrait (facultatif) » propose **+ Fichier** et **+ Spotify** (en ajouter un remplace l’extrait existant), la barre de temps Début/Fin et « Écouter le passage », comme pour les morceaux (voir « Morceaux »), et « Retirer l’extrait ». Une question avec extrait porte un ♪ dans la liste des questions.
+**Préparation (Création)** : dans l’éditeur d’une question QCM, le bloc « Extrait (facultatif) » propose **+ Fichier**, **+ Vidéo**, **+ YouTube** et **+ Spotify** (en ajouter un remplace l’extrait existant), la barre de temps Début/Fin et « Écouter le passage », comme pour les morceaux (voir « Morceaux »), et « Retirer l’extrait ». Une question avec extrait porte un ♪ dans la liste des questions.
 
 Une question qui a un extrait (♪ dans la liste de Création) s’ouvre autrement : la salle écoute d’abord, puis découvre la question.
 1. Entrée affiche la page de la question, sans texte.
@@ -144,6 +161,7 @@ Le Grand écran affiche la même adresse que celle choisie dans la Régie (menu 
 - Les manches importées, la manche en cours et l'étape du Grand écran sont aussi sauvegardées dans `scores.json`.
 - Nouvelle partie : arrêtez le serveur et supprimez `scores.json` (ou utilisez « Remettre les scores à zéro »).
 - Après un changement de manche ou un redémarrage, R ne rejoue pas l’extrait d’une question déjà révélée.
+- Vidéos : seul le Grand écran ouvert sur le PC du serveur (`127.0.0.1`) les joue ; il faut un clic dedans avant la soirée, et l’étape Jeu. YouTube demande internet et peut afficher des publicités.
 - Spotify : si le même compte est utilisé ailleurs en même temps (téléphone), il prend la main sur la lecture.
 - Création et la Régie sont deux appareils Spotify du même compte : écouter un titre dans Création pendant la soirée coupe la lecture de la Régie.
 - Spotify n’est pas garanti sur Safari (Chrome recommandé).

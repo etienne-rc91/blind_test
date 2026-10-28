@@ -1,7 +1,7 @@
 # Vidéos dans les manches buzzer et QCM : YouTube et fichiers vidéo — conception
 
 Date : 2026-10-28
-Statut : validé le 2026-10-28
+Statut : construit le 2026-10-28
 
 ## 1. Intention
 
