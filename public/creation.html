@@ -149,9 +149,11 @@
               <div id="clipAdd">
               <div class="row" style="margin-top:6px; flex-wrap:nowrap">
                 <button class="ghost" id="addFile">+ Fichier</button>
+                <button class="ghost" id="addVideo">+ Vidéo</button>
                 <button class="ghost" id="addSpotify" aria-expanded="false" aria-controls="spotifyPanel">+ Spotify</button>
               </div>
               <input type="file" id="songFile" multiple hidden>
+              <input type="file" id="videoFile" multiple hidden>
               <p class="err" id="addErr" style="margin-top:6px"></p>
               <div class="sp" id="spotifyPanel" hidden>
                 <p class="hint" id="spStatus"></p>
@@ -169,6 +171,7 @@
             <div id="songEditor" hidden>
               <div class="row"><div class="label" id="sLabel"></div><button class="danger icon" id="delSong" style="margin-left:auto">Supprimer le morceau</button></div>
               <p class="song-ref" id="sRef"></p>
+              <div id="sVideo" hidden style="aspect-ratio:16/9; background:#000; border-radius:8px; overflow:hidden; margin:8px 8px 0"></div>
               <div class="player">
                 <button id="sPlay">▶ Lecture</button>
                 <span class="time" id="sTime">0:00 / –:––</span>
@@ -276,6 +279,7 @@ function placeClipEditor(qcm) {
   const edTo = qcm ? $('extractSlot') : $('buzzerSplit');
   if (add.parentElement !== addTo || ed.parentElement !== edTo) { addTo.append(add); edTo.append(ed); }
   $('songFile').multiple = !qcm;
+  $('videoFile').multiple = !qcm;
 }
 
 const newQuestion = () => ({ text: '', image: null, choices: { A: '', B: '', C: '', D: '' }, answer: null });
@@ -429,7 +433,7 @@ function renderSongs(s) {
   const ol = $('songs'); ol.innerHTML = '';
   s.songs.forEach((m, i) => {
     const li = el('li', i === selSong ? 'on' : '');
-    li.append(el('span', 'grip', '⋮⋮'), el('span', 'txt', `${i + 1}. ${m.source === 'spotify' ? '♪' : '📁'} ${(m.answer || '').trim() || m.ref}`));
+    li.append(el('span', 'grip', '⋮⋮'), el('span', 'txt', `${i + 1}. ${sourceIcon(m.source)} ${(m.answer || '').trim() || m.ref}`));
     if (songTodo(m).length) { const w = el('span', 'warn', '⚠'); w.title = 'À compléter'; li.append(w); }
     li.append(moveButtons(i, s.songs, (from, to) => { selSong = follow(selSong, from, to); touch(); render(); }));
     li.onclick = () => { selSong = i; render(); };
@@ -621,15 +625,20 @@ window.renderExtras = (q) => {
 // ----- Morceaux : fichiers copiés dans musiques/ par le serveur -----
 const MUSIC_TYPES = ['mp3', 'm4a', 'aac', 'ogg', 'oga', 'wav', 'flac'];
 const MAX_MUSIC = 50 * 1024 * 1024;
+const VIDEO_TYPES = ['mp4', 'webm', 'm4v', 'mov'];
+const MAX_VIDEO = 500 * 1024 * 1024;
+const SOURCE_ICONS = { file: '📁', spotify: '♪', video: '🎬', youtube: '▶' };
+const sourceIcon = (source) => SOURCE_ICONS[source] || '📁';
 const DEFAULT_PASSAGE = 30;                        // secondes proposées pour un nouveau morceau
 $('songFile').accept = MUSIC_TYPES.map((t) => `.${t}`).join(',');
+$('videoFile').accept = VIDEO_TYPES.map((t) => `.${t}`).join(',');
 const fmt = (sec) => { const t = Math.max(0, Math.floor(sec)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 // Durée lue sur le fichier local avant l'envoi (null si le navigateur ne sait pas la lire).
-function fileDuration(f) {
+function fileDuration(f, tag = 'audio') {
   return new Promise((resolve) => {
-    const a = new Audio();
+    const a = document.createElement(tag);
     const url = URL.createObjectURL(f);
     let done = false;
     const finish = (d) => {
@@ -649,25 +658,30 @@ function defaultEnd(d) {
   return d < 2 ? Math.max(1, Math.floor(d)) : Math.min(DEFAULT_PASSAGE, Math.floor(d));
 }
 
-$('addFile').onclick = () => { if (confirmReplace()) $('songFile').click(); };
-$('songFile').onchange = async () => {
+// Envoie les fichiers choisis vers `cfg.route` et en fait des passages de source `cfg.source`.
+const UPLOADS = {
+  file: { source: 'file', tag: 'audio', route: 'musiques', max: MAX_MUSIC, maxLabel: '50 Mo', input: 'songFile', button: 'addFile', label: '+ Fichier' },
+  video: { source: 'video', tag: 'video', route: 'videos', max: MAX_VIDEO, maxLabel: '500 Mo', input: 'videoFile', button: 'addVideo', label: '+ Vidéo' },
+};
+async function uploadClips(cfg) {
   const target = clipTarget();                     // la manche (et la question) visée au moment du choix
   const qcm = target.type === 'qcm';
-  const files = [...$('songFile').files].slice(0, qcm ? 1 : undefined);
-  $('songFile').value = '';
+  const input = $(cfg.input), btn = $(cfg.button);
+  const files = [...input.files].slice(0, qcm ? 1 : undefined);
+  input.value = '';
   if (!files.length) return;
   const errors = [];
   $('addErr').textContent = '';
-  $('addFile').disabled = true;
+  $('addFile').disabled = $('addVideo').disabled = true;
   for (const [n, f] of files.entries()) {
-    $('addFile').textContent = files.length > 1 ? `Envoi ${n + 1}/${files.length}…` : 'Envoi…';
-    if (f.size > MAX_MUSIC) { errors.push(`${f.name} : fichier trop gros (50 Mo maximum).`); continue; }
+    btn.textContent = files.length > 1 ? `Envoi ${n + 1}/${files.length}…` : 'Envoi…';
+    if (f.size > cfg.max) { errors.push(`${f.name} : fichier trop gros (${cfg.maxLabel} maximum).`); continue; }
     try {
-      const d = await fileDuration(f);
-      const res = await fetch(`/api/musiques?filename=${enc(f.name)}`, { method: 'POST', headers: { 'x-host-key': key }, body: f });
+      const d = await fileDuration(f, cfg.tag);
+      const res = await fetch(`/api/${cfg.route}?filename=${enc(f.name)}`, { method: 'POST', headers: { 'x-host-key': key }, body: f });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
-      const clip = { source: 'file', ref: data.name, start: 0, end: defaultEnd(d) };
+      const clip = { source: cfg.source, ref: data.name, start: 0, end: defaultEnd(d) };
       // Réponse proposée (morceau seulement) : le nom du fichier tel que choisi (avec ses espaces), sans l'extension.
       if (!qcm) clip.answer = f.name.replace(/\.[^.]+$/, '').trim();
       setClip(clip, target);
@@ -675,9 +689,14 @@ $('songFile').onchange = async () => {
       errors.push(`${f.name} : ${e.message}`);
     }
   }
-  $('addFile').disabled = false; $('addFile').textContent = '+ Fichier';
+  $('addFile').disabled = $('addVideo').disabled = false;
+  $('addFile').textContent = UPLOADS.file.label; $('addVideo').textContent = UPLOADS.video.label;
   $('addErr').textContent = errors.join(' ');
-};
+}
+$('addFile').onclick = () => { if (confirmReplace()) $('songFile').click(); };
+$('songFile').onchange = () => uploadClips(UPLOADS.file);
+$('addVideo').onclick = () => { if (confirmReplace()) $('videoFile').click(); };
+$('videoFile').onchange = () => uploadClips(UPLOADS.video);
 
 $('delSong').onclick = () => {
   const qcm = clipTarget().type === 'qcm';
@@ -698,7 +717,8 @@ const playError = (msg) => `Lecture impossible : ${String(msg || 'erreur inconnu
 
 function getPlayer(source) {
   if (!players[source]) {
-    const opts = source === 'spotify' ? { getToken: spotifyToken, name: 'Blind test — Création' } : undefined;
+    const opts = source === 'spotify' ? { getToken: spotifyToken, name: 'Blind test — Création' }
+      : (source === 'video' || source === 'youtube') ? { container: $('sVideo') } : undefined;
     const p = Players.create(source, opts);
     p.onError((msg) => {
       if (!loaded || loaded.source !== source) return;   // erreur d'un lecteur qui ne joue pas le morceau affiché
@@ -740,7 +760,8 @@ function renderSong(m) {
   $('sLabel').textContent = qcm ? '' : `Morceau ${selSong + 1}`;
   $('delSong').textContent = qcm ? 'Retirer l’extrait' : 'Supprimer le morceau';
   $('sAnswerField').hidden = qcm;
-  $('sRef').textContent = `${m.source === 'spotify' ? '♪' : '📁'} ${m.ref || 'aucune musique'}`;
+  $('sVideo').hidden = m.source !== 'video' && m.source !== 'youtube';
+  $('sRef').textContent = `${sourceIcon(m.source)} ${m.ref || 'aucune musique'}`;
   if (!qcm && document.activeElement !== $('sAnswer')) $('sAnswer').value = m.answer || '';
   $('sAnswer').classList.toggle('missing', !qcm && !(m.answer || '').trim());
   const todo = qcm ? extractTodo(m) : songTodo(m);
