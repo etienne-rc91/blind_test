@@ -181,5 +181,7 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`    Joueurs : http://${ip}:${PORT}/`);
     console.log(`    Hôte    : http://${ip}:${PORT}/host?key=${HOST_KEY}`);
   }
-  console.log(`\n  Sur ce PC : http://localhost:${PORT}/host?key=${HOST_KEY}\n`);
+  console.log('\n  Sur ce PC :');
+  console.log(`    Régie       : http://localhost:${PORT}/host?key=${HOST_KEY}`);
+  console.log(`    Grand écran : http://localhost:${PORT}/screen   (fenêtre à glisser sur le projecteur)\n`);
 });
