@@ -110,11 +110,13 @@ buzzer/
 
 ```bash
 npm install                 # à faire avec internet, avant la soirée
-npm start                   # port 3000, clé hôte aléatoire
+npm start                   # port 3000, clé hôte aléatoire ; lit .env s’il existe
 HOST_KEY=secret npm start   # clé fixe
 PORT=4000 npm start
 SCORES_FILE=/chemin/scores.json npm start
 ```
+
+Tous les paramètres (`HOST_KEY`, `PORT`, `SPOTIFY_CLIENT_ID`, `PARTIES_DIR`, `MUSIQUES_DIR`, `IMAGES_DIR`, `SCORES_FILE`, `SPOTIFY_FILE`) peuvent être mis dans `.env` (modèle : `.env.example`, lu par `node --env-file-if-exists`, Node ≥ 22.9). Un nouveau paramètre lu dans `process.env` doit être ajouté à `.env.example`.
 
 Les tests automatisés se lancent avec `npm test` (`node --test`, y compris `server.test.js`). Vérification manuelle en plus : lancer le serveur, ouvrir la Régie (`/host?key=…`) et deux Buzzers (`/`), jouer un morceau complet (Espace, buzz, B / M, Z).
 

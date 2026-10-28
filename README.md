@@ -8,6 +8,10 @@ Les téléphones servent de buzzers et le PC arbitre. Aucune dépendance à inte
     npm start                 # port 3000, clé hôte aléatoire
     HOST_KEY=secret npm start # clé fixe (PowerShell : $env:HOST_KEY="secret"; npm start)
 
+Node 22.9 ou plus est nécessaire.
+
+**Paramètres dans un fichier** : copiez `.env.example` en `.env` (même dossier) et remplissez les valeurs voulues (clé hôte, port, Client ID Spotify, dossiers des parties, musiques et images…). `npm start` lit ce fichier au démarrage, sans rien taper de plus. Un paramètre donné dans la commande l’emporte sur le fichier. Le fichier `.env` n’est jamais commité.
+
 La console affiche l'URL joueur, l'URL de la Régie (`/host?key=…`) et celle du Grand écran (`/screen`) ; sur ce PC, elle les donne en `127.0.0.1` (l'adresse qu'accepte Spotify). Ouvrez la Régie et le Grand écran sur le PC ; les joueurs scannent le QR code affiché sur le Grand écran (étape Installation). La Régie rappelle l'adresse à taper dans le bloc « Rejoindre ».
 
 ## Préparer la soirée (parties)
@@ -56,7 +60,7 @@ Une manche buzzer qui contient des **morceaux** est jouée par la Régie : l’a
 Les morceaux Spotify demandent internet (et seulement eux) et un compte **Premium**. Le Client Secret n’est pas utilisé.
 1. Sur developer.spotify.com, créez une app. Redirect URI : `http://127.0.0.1:3000/spotify/callback` (si vous changez `PORT`, adaptez le numéro). Cochez Web API et Web Playback SDK.
 2. En mode développement, ajoutez votre e-mail Spotify dans User Management de l’app.
-3. Lancez `SPOTIFY_CLIENT_ID=… npm start` (PowerShell : `$env:SPOTIFY_CLIENT_ID="…"; npm start`), ou saisissez le Client ID dans la page Création.
+3. Mettez le Client ID dans `.env` (`SPOTIFY_CLIENT_ID=…`, voir « Lancement »), ou lancez `SPOTIFY_CLIENT_ID=… npm start` (PowerShell : `$env:SPOTIFY_CLIENT_ID="…"; npm start`), ou saisissez-le dans la page Création.
 4. Ouvrez la Régie et Création sur `http://127.0.0.1:3000/…` (et non `localhost` ni l’IP du réseau) pour garder la connexion. Chrome est recommandé.
 5. Cliquez sur « Se connecter à Spotify » dans Création, puis cherchez vos titres avec **+ Spotify**.
 
