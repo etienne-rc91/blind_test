@@ -9,3 +9,6 @@ images/*
 parties/*
 !parties/.gitkeep
 .claude/worktrees/
+musiques/*
+!musiques/.gitkeep
+spotify.json

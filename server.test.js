@@ -9,7 +9,7 @@ const net = require('net');
 
 const KEY = 'test-key';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'buzzer-api-'));
-const DIRS = { parties: path.join(tmp, 'parties'), images: path.join(tmp, 'images') };
+const DIRS = { parties: path.join(tmp, 'parties'), images: path.join(tmp, 'images'), musiques: path.join(tmp, 'musiques') };
 fs.mkdirSync(DIRS.images);
 let base, child;
 
@@ -21,7 +21,7 @@ test.before(async () => {
   const port = await freePort();
   base = `http://localhost:${port}`;
   child = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
-    env: { ...process.env, PORT: String(port), HOST_KEY: KEY, SCORES_FILE: path.join(tmp, 'scores.json'), IMAGES_DIR: DIRS.images, PARTIES_DIR: DIRS.parties },
+    env: { ...process.env, PORT: String(port), HOST_KEY: KEY, SCORES_FILE: path.join(tmp, 'scores.json'), IMAGES_DIR: DIRS.images, MUSIQUES_DIR: DIRS.musiques, PARTIES_DIR: DIRS.parties },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   await new Promise((resolve, reject) => {
@@ -182,4 +182,27 @@ test('play asks for confirmation when teams exist', async () => {
   r = await json(await api('POST', '/api/parties/Autre/play', { confirm: true }));
   assert.equal(r.status, 200);
   ws.close();
+});
+
+test('music upload: same content reuses the name, other content gets a suffix', async () => {
+  let r = await json(await api('POST', '/api/musiques?filename=a.mp3', Buffer.from('un'), { raw: true }));
+  assert.deepEqual([r.status, r.body], [200, { ok: true, name: 'a.mp3' }]);
+  r = await json(await api('POST', '/api/musiques?filename=a.mp3', Buffer.from('un'), { raw: true }));
+  assert.deepEqual(r.body, { ok: true, name: 'a.mp3' });
+  r = await json(await api('POST', '/api/musiques?filename=a.mp3', Buffer.from('deux'), { raw: true }));
+  assert.deepEqual(r.body, { ok: true, name: 'a-2.mp3' });
+  const res = await fetch(`${base}/musiques/a.mp3`);
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), 'un');
+});
+
+test('music upload: refused extension, empty body, missing host key', async () => {
+  let r = await json(await api('POST', '/api/musiques?filename=a.txt', Buffer.from('x'), { raw: true }));
+  assert.equal(r.status, 400);
+  assert.equal(r.body.error, 'Format audio non accepté (mp3, m4a, aac, ogg, wav ou flac).');
+  r = await json(await api('POST', '/api/musiques?filename=b.mp3', Buffer.alloc(0), { raw: true }));
+  assert.equal(r.status, 400);
+  assert.equal(r.body.error, 'Morceau vide.');
+  r = await api('POST', '/api/musiques?filename=c.mp3', Buffer.from('x'), { raw: true, key: null });
+  assert.equal(r.status, 403);
 });

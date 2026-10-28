@@ -10,6 +10,7 @@ const QRCode = require('qrcode');
 const { Server } = require('socket.io');
 const { createGame } = require('./lib/game');
 const { isSafeImageName } = require('./lib/game-file');
+const { MUSIC_TYPES, isSafeMusicName } = require('./lib/songs');
 const { createPartiesStore, cleanPartieName } = require('./lib/parties');
 const { checkLiveEdit } = require('./lib/live-edit');
 
@@ -18,8 +19,10 @@ const HOST_KEY = process.env.HOST_KEY || crypto.randomBytes(3).toString('hex');
 const SCORES_FILE = process.env.SCORES_FILE || path.join(__dirname, 'scores.json');
 const IMAGES_DIR = process.env.IMAGES_DIR || path.join(__dirname, 'images');
 const PARTIES_DIR = process.env.PARTIES_DIR || path.join(__dirname, 'parties');
+const MUSIQUES_DIR = process.env.MUSIQUES_DIR || path.join(__dirname, 'musiques');
 const IMAGE_TYPES = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
 const MAX_IMAGE = 10 * 1024 * 1024;
+const MAX_MUSIC = 50 * 1024 * 1024;
 
 const app = express();
 const server = http.createServer(app);
@@ -60,6 +63,7 @@ app.get('/qr.svg', async (req, res) => {
   res.type('image/svg+xml').send(svg);
 });
 app.use('/images', express.static(IMAGES_DIR, { dotfiles: 'deny', index: false }));
+app.use('/musiques', express.static(MUSIQUES_DIR, { dotfiles: 'deny', index: false }));
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 // ---------- Jeu ----------
@@ -107,7 +111,8 @@ function loadScores() {
 
 // ---------- Parties (API HTTP, réservée à l'animateur) ----------
 fs.mkdirSync(IMAGES_DIR, { recursive: true });
-const parties = createPartiesStore({ dir: PARTIES_DIR, musicExists: () => true, imageExists: (name) => isSafeImageName(name) && fs.existsSync(path.join(IMAGES_DIR, name)) });
+fs.mkdirSync(MUSIQUES_DIR, { recursive: true });
+const parties = createPartiesStore({ dir: PARTIES_DIR, musicExists: (name) => isSafeMusicName(name) && fs.existsSync(path.join(MUSIQUES_DIR, name)), imageExists: (name) => isSafeImageName(name) && fs.existsSync(path.join(IMAGES_DIR, name)) });
 const sameName = (a, b) => a != null && b != null && a.normalize('NFC').toLowerCase() === b.normalize('NFC').toLowerCase();
 const fail = (res, r) => res.status(r.status || 400).json({ error: r.error });
 
@@ -199,22 +204,31 @@ api.post('/parties-import', rawBody('1mb'), (req, res) => {
   return r.ok ? res.json(r) : fail(res, r);
 });
 
-// Image choisie dans Création : copiée dans images/ sous un nom sûr ; même nom et même contenu → réutilisée.
-api.post('/images', rawBody(MAX_IMAGE), (req, res) => {
+// Fichier choisi dans Création : copié dans son dossier sous un nom sûr ; même nom et même contenu → réutilisé.
+function saveUpload(req, res, { dir, types, badType, empty }) {
   const base = path.basename(String(req.query.filename || '')).replace(/[^\w.-]/g, '_').replace(/^\.+/, '');
   const m = base.match(/^(.+)\.([A-Za-z0-9]+)$/);
-  if (!m || !IMAGE_TYPES.includes(m[2].toLowerCase())) return res.status(400).json({ error: 'Format d’image non accepté (png, jpg, gif, webp ou svg).' });
-  if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'Image vide.' });
+  if (!m || !types.includes(m[2].toLowerCase())) return res.status(400).json({ error: badType });
+  if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: empty });
   for (let n = 1; ; n += 1) {
     const name = n === 1 ? base : `${m[1]}-${n}.${m[2]}`;
-    const file = path.join(IMAGES_DIR, name);
+    const file = path.join(dir, name);
     if (!fs.existsSync(file)) { fs.writeFileSync(file, req.body); return res.json({ ok: true, name }); }
     if (fs.readFileSync(file).equals(req.body)) return res.json({ ok: true, name });
   }
-});
+}
+api.post('/images', rawBody(MAX_IMAGE), (req, res) => saveUpload(req, res, {
+  dir: IMAGES_DIR, types: IMAGE_TYPES, badType: 'Format d’image non accepté (png, jpg, gif, webp ou svg).', empty: 'Image vide.',
+}));
+api.post('/musiques', rawBody(MAX_MUSIC), (req, res) => saveUpload(req, res, {
+  dir: MUSIQUES_DIR, types: MUSIC_TYPES, badType: 'Format audio non accepté (mp3, m4a, aac, ogg, wav ou flac).', empty: 'Morceau vide.',
+}));
 
 api.use((err, req, res, next) => {   // corps trop gros ou JSON illisible
-  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Fichier trop gros (10 Mo maximum pour une image).' });
+  if (err.type === 'entity.too.large') {
+    const music = req.path === '/musiques';
+    return res.status(413).json({ error: music ? 'Fichier trop gros (50 Mo maximum pour un morceau).' : 'Fichier trop gros (10 Mo maximum pour une image).' });
+  }
   res.status(400).json({ error: 'Requête invalide.' });
 });
 app.use('/api', api);
@@ -222,7 +236,21 @@ app.use('/api', api);
 // ---------- Sockets ----------
 // Un client peut envoyer n'importe quoi à la place de la fonction de réponse : on ne l'appelle que si c'en est une.
 const reply = (ack) => (typeof ack === 'function' ? ack : () => {});
-const HOST_ACTIONS = ['open', 'close', 'correct', 'wrong', 'unexclude', 'score', 'kick', 'reset-scores', 'stage', 'join-ip', 'section', 'qcm', 'countdown'];
+const HOST_ACTIONS = ['open', 'close', 'correct', 'wrong', 'unexclude', 'score', 'kick', 'reset-scores', 'stage', 'join-ip', 'section', 'qcm', 'countdown', 'replay'];
+
+// Une seule Régie joue le son : la dernière à agir (ou la première connectée). Question de réseau, pas de jeu.
+let soundOwner = null;
+function hostSockets() {
+  return [...(io.sockets.adapter.rooms.get('hosts') || [])].map((id) => io.sockets.sockets.get(id)).filter(Boolean);
+}
+function emitSound() {
+  for (const sock of hostSockets()) sock.emit('sound', { mine: sock.id === soundOwner });
+}
+function claimSound(id) {
+  if (soundOwner === id) return;
+  soundOwner = id;
+  emitSound();
+}
 
 const safe = (fn) => (...args) => {
   try { fn(...args); } catch (e) { console.error('  Erreur pendant une action :', e); }
@@ -240,6 +268,10 @@ io.on('connection', (socket) => {
   if (socket.data.role !== 'player') {
     socket.join(socket.data.role === 'host' ? 'hosts' : 'screens');
     socket.emit('info', { ips: lanAddresses(), port: PORT });
+    if (isHost) {
+      if (!soundOwner || !io.sockets.sockets.has(soundOwner)) soundOwner = socket.id;
+      emitSound();
+    }
   }
 
   // --- Joueurs ---
@@ -267,6 +299,7 @@ io.on('connection', (socket) => {
   for (const action of HOST_ACTIONS) {
     on(`host:${action}`, (payload) => {
       if (!isHost) return;
+      claimSound(socket.id);
       const res = game.host(action, payload);
       for (const sid of res.kickedSockets || []) {
         const sock = io.sockets.sockets.get(sid);
@@ -276,12 +309,29 @@ io.on('connection', (socket) => {
     });
   }
   on('host:undo', () => {
-    if (!isHost || !game.undo()) return;
-    broadcast();
+    if (!isHost) return;
+    claimSound(socket.id);
+    if (game.undo()) broadcast();
+  });
+
+  // Fin du passage joué : un fait remonté par la Régie, pas une action annulable.
+  on('host:ended', (payload) => {
+    if (!isHost) return;
+    const seq = payload && payload.seq;
+    if (Number.isInteger(seq) && game.songEnded(seq)) broadcast();
+  });
+
+  on('host:sound-here', () => {
+    if (isHost) claimSound(socket.id);
   });
 
   on('disconnect', () => {
     game.leave(socket.id);
+    if (isHost && soundOwner === socket.id) {
+      const next = hostSockets().find((s) => s.id !== socket.id);   // le plus ancien hôte restant
+      soundOwner = next ? next.id : null;
+      emitSound();
+    }
     broadcast();
   });
 });
