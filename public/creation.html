@@ -786,7 +786,7 @@ function renderSong(m) {
   $('delSong').textContent = qcm ? 'Retirer l’extrait' : 'Supprimer le morceau';
   $('sAnswerField').hidden = qcm;
   $('sVideo').hidden = !isVideo(m.source);
-  $('sRef').textContent = `${sourceIcon(m.source)} ${m.ref || 'aucune musique'}`;
+  showRef(m);
   if (!qcm && document.activeElement !== $('sAnswer')) $('sAnswer').value = m.answer || '';
   $('sAnswer').classList.toggle('missing', !qcm && !(m.answer || '').trim());
   const todo = qcm ? extractTodo(m) : songTodo(m);
@@ -918,10 +918,34 @@ function spotifyLoginUrl() {
   const path = `/spotify/login?key=${enc(key)}&back=creation`;
   return location.hostname === 'localhost' ? `${location.protocol}//127.0.0.1${location.port ? ':' + location.port : ''}${path}` : path;
 }
+// Nom affiché d’un morceau Spotify ou YouTube : « Artiste — Titre » ou titre de la vidéo, sinon son identifiant.
+const ytInfo = new Map();                          // id → { id, title, thumbnail }
+const refAsked = new Set();                        // déjà demandés : un échec (Spotify non connecté, hors ligne) n’est pas relancé
+function refName(m) {
+  if (m.source === 'spotify') { const t = trackInfo.get(m.ref); return t ? `${t.artists} — ${t.name}` : ''; }
+  if (m.source === 'youtube') return ytInfo.get(m.ref)?.title || '';
+  return '';
+}
+function showRef(m) {
+  const name = refName(m);
+  $('sRef').textContent = `${sourceIcon(m.source)} ${name || m.ref || 'aucune musique'}`;
+  $('sRef').title = name ? m.ref : '';
+  if (name || !m.ref || refAsked.has(`${m.source}:${m.ref}`)) return;
+  if (m.source !== 'spotify' && m.source !== 'youtube') return;
+  refAsked.add(`${m.source}:${m.ref}`);
+  const route = m.source === 'spotify' ? `/spotify/tracks/${enc(m.ref)}` : `/youtube/info?link=${enc(`youtube:${m.ref}`)}`;
+  api('GET', route)
+    .then((info) => {
+      (m.source === 'spotify' ? trackInfo : ytInfo).set(m.ref, info);
+      if (editedClip() === m) showRef(m);
+    })
+    .catch(() => {});                              // le nom est un confort : l’identifiant reste affiché
+}
 async function spotifyDuration(m) {
   try {
     let t = trackInfo.get(m.ref);
     if (!t) { t = await api('GET', `/spotify/tracks/${enc(m.ref)}`); trackInfo.set(m.ref, t); }
+    if (editedClip() === m) showRef(m);
     if (loaded === m && dur === null && t.durationSec > 0) { dur = t.durationSec; paintSong(); }
   } catch (e) {
     if (loaded === m) $('sErr').textContent = e.message;
@@ -1035,6 +1059,7 @@ $('ytAdd').onclick = async () => {
     const problem = await p.check(info.id);
     if (problem) throw new Error(problem);
     const d = await p.duration();
+    ytInfo.set(info.id, info);
     const clip = { source: 'youtube', ref: info.id, start: 0, end: defaultEnd(d) };
     if (target.type === 'buzzer') clip.answer = (info.title || '').trim().slice(0, 120);
     $('ytLink').value = '';
