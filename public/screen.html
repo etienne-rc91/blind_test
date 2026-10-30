@@ -62,7 +62,9 @@
   #banner.full .who { font-size: 16vh; }
   #banner.full .sub { font-size: 4vh; }
   #videoZone { flex: 1; min-height: 0; position: relative; border-radius: 2vh; overflow: hidden; background: #000; }
-  #videoZone[hidden] { display: none; }
+  /* Zone écartée (bandeau, classement…) : invisible et hors de la mise en page, mais jamais en display: none.
+     Chrome ne réaffiche plus l’image d’un lecteur YouTube sorti de la page puis remis : rectangle noir, son seul. */
+  #videoZone.away { position: fixed; inset: 0; opacity: 0; pointer-events: none; z-index: -1; }
   #videoStage, #videoStage .vp { position: absolute; inset: 0; }
   #videoStage.off, #videoStage .vp[hidden] { visibility: hidden; }
   #videoCover { position: absolute; inset: 0; background: var(--panel); display: flex; align-items: center; justify-content: center; text-align: center; padding: 4vh; font-size: 9vh; font-weight: 800; color: var(--muted); }
@@ -175,7 +177,7 @@
   <div id="banner"><span class="who"></span><span class="sub"></span></div>
   <div id="reveal" hidden><img id="revealCover" alt="" hidden><div class="txt"><p class="lbl" id="revealLbl">La réponse</p><p class="ans" id="revealAnswer"></p></div></div>
   <ol id="ranking"></ol>
-  <div id="videoZone" hidden>
+  <div id="videoZone" class="away" aria-hidden="true">
     <div id="videoStage" class="off"></div>
     <div id="videoCover" hidden></div>
     <div id="videoStrip" hidden><img id="stripCover" alt="" hidden><p class="ans" id="stripAnswer"></p><p class="won" id="stripWon"></p></div>
@@ -449,7 +451,8 @@ function songSub() {
 // Bande 'reveal' (manche buzzer) : la réponse ; bande 'countdown' (QCM) : le temps restant et les propositions.
 function renderVideoZone(view, reveal, q) {
   const shown = view.main === 'video' || view.main === 'cover';
-  $('videoZone').hidden = !shown;
+  $('videoZone').classList.toggle('away', !shown);
+  $('videoZone').setAttribute('aria-hidden', String(!shown));
   $('videoStage').classList.toggle('off', view.main !== 'video');
   $('videoCover').hidden = view.main !== 'cover';
   $('videoCover').textContent = view.main === 'cover' ? view.cover : '';
