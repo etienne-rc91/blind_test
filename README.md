@@ -14,6 +14,27 @@ Node 22.9 ou plus est nécessaire.
 
 La console affiche l'URL joueur, l'URL de la Régie (`/host?key=…`) et celle du Grand écran (`/screen`) ; sur ce PC, elle les donne en `127.0.0.1` (l'adresse qu'accepte Spotify). Ouvrez la Régie et le Grand écran sur le PC ; les joueurs scannent le QR code affiché sur le Grand écran (étape Installation). La Régie rappelle l'adresse à taper dans le bloc « Rejoindre ».
 
+### Serveur lancé dans WSL (Windows)
+Par défaut, WSL a son propre réseau virtuel : le serveur n’y voit qu’une adresse en `172.x.x.x`, injoignable depuis les téléphones (le QR code est alors faux). Trois réglages (Windows 11 22H2 ou plus récent), les deux premiers une seule fois :
+
+1. **Mode réseau « miroir »** : WSL voit les mêmes adresses que Windows, dont celle du Wi-Fi. Dans PowerShell :
+
+       Set-Content -Path "$env:USERPROFILE\.wslconfig" -Value "[wsl2]`nnetworkingMode=mirrored"
+       wsl --shutdown
+
+   (Ou avec le Bloc-notes : fichier `C:\Users\<vous>\.wslconfig` contenant les deux lignes `[wsl2]` et `networkingMode=mirrored`, enregistré avec le type « Tous les fichiers » pour éviter un `.wslconfig.txt`.) `wsl --shutdown` ferme tous les terminaux WSL ; rouvrez-en un et relancez `npm start`. La console doit maintenant afficher l’adresse du Wi-Fi (`192.168.x.x` ou proche).
+2. **Pare-feu de WSL** : il bloque tout ce qui arrive de l’extérieur. Dans PowerShell **en administrateur** (adaptez `3000` si vous changez de port) :
+
+       New-NetFirewallHyperVRule -Name blindtest -DisplayName "Blind test" -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -Protocol TCP -LocalPorts 3000 -Action Allow
+
+3. **Profil du Wi-Fi en « Privé »**, toujours en administrateur (remplacez `Wi-Fi` par le nom de la carte si besoin, voir `Get-NetConnectionProfile`) :
+
+       Set-NetConnectionProfile -InterfaceAlias "Wi-Fi" -NetworkCategory Private
+
+   À refaire pour chaque nouveau Wi-Fi (celui de la salle, le routeur de voyage) : Windows classe d’office un réseau inconnu en « Public ».
+
+Après un `wsl --shutdown`, `npm start` peut répondre `EADDRINUSE` (port déjà utilisé) pendant une ou deux minutes, le temps que Windows libère les connexions de l’ancien serveur. Patientez, ou lancez cette fois sur un autre port (`PORT=3001 npm start`, avec la règle de pare-feu correspondante).
+
 ## Préparer la soirée (parties)
 Une **partie** est une soirée préparée : ses manches (« Cinéma », « Années 80 »…) et, pour les manches QCM, leurs questions. Chaque partie est un fichier CSV du dossier `parties/`, à côté du serveur. Les points sont comptés par manche et le Bilan les affiche côte à côte.
 
@@ -147,7 +168,7 @@ Le Grand écran affiche la même adresse que celle choisie dans la Régie (menu 
 
 ## Check-list salle
 1. Le PC et les téléphones sont sur le même Wi-Fi (idéalement votre routeur de voyage).
-2. Pare-feu Windows : autorisez Node.js sur les réseaux privés, et passez le profil du Wi-Fi en « Privé ».
+2. Pare-feu Windows : autorisez Node.js sur les réseaux privés, et passez le profil du Wi-Fi en « Privé ». Serveur dans WSL : voir « Serveur lancé dans WSL » (mode miroir, règle de pare-feu de WSL, profil « Privé » du Wi-Fi de la salle).
 3. Wi-Fi sans internet : demandez aux joueurs de couper les données mobiles, sinon le téléphone bascule en 4G et ne voit plus le PC.
 4. Isolation des clients (« AP isolation ») : à désactiver sur le routeur, sinon les téléphones ne voient pas le PC.
 5. Android récent : le navigateur doit avoir l'autorisation « Appareils à proximité » (Paramètres → Applications → Chrome → Autorisations). Sans elle, la page ne charge pas (`ERR_TOO_MANY_RETRIES` ou délai dépassé), même sur le bon Wi-Fi.
