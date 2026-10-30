@@ -84,13 +84,13 @@ Un morceau ou un extrait QCM peut être une **vidéo**, jouée par le Grand écr
 **Internet** : seuls les morceaux YouTube (et Spotify) en ont besoin. Les fichiers vidéo marchent hors ligne. « Jouer » prévient quand une partie contient des vidéos YouTube.
 
 ## Manches QCM
-Toutes les équipes répondent en même temps, A, B, C ou D, sur leur Buzzer (seules les lettres y apparaissent ; les propositions sont sur le Grand écran). 1 point par bonne réponse.
+Toutes les équipes répondent en même temps, A, B, C ou D, sur leur Buzzer (seules les lettres y apparaissent ; les propositions sont sur le Grand écran). 1 point par bonne réponse, ou 2 ou 3 si l’animateur le choisit en révélant.
 
 Dans la Régie, un seul bouton suit le déroulé, raccourci **Entrée** :
 1. Afficher la question (image et/ou texte sur le Grand écran).
 2. Afficher les propositions.
 3. Lancer le compte à rebours : les équipes choisissent, et peuvent changer d'avis jusqu'à la fin. Le Grand écran montre combien d'équipes ont répondu, pas quoi. La Régie voit chaque réponse.
-4. À zéro, les réponses sont bloquées. Révéler la réponse : les points sont donnés, le Grand écran montre la bonne proposition et le nombre d'équipes par lettre.
+4. À zéro, les réponses sont bloquées. Révéler la réponse : les points sont donnés, le Grand écran montre la bonne proposition, le nombre d'équipes par lettre et les points gagnés. Entrée ou 1 donne 1 point par bonne réponse ; 2 et 3 (ou les boutons +2 et +3) en donnent 2 ou 3.
 5. Question suivante : le Grand écran revient au classement.
 
 La durée du compte à rebours se règle dans le bloc « Manches » (20 s par défaut, de 5 à 120 s).
@@ -125,14 +125,15 @@ Le Grand écran affiche la même adresse que celle choisie dans la Régie (menu 
 
 ## Déroulé
 - Espace : nouveau morceau, ouvre les buzzers et efface les exclusions.
-- B : bonne réponse, +1 point au premier, buzzers fermés.
+- B (ou 1) : bonne réponse, +1 point au premier, buzzers fermés.
+- 2 ou 3 (ou les boutons +2 et +3) : bonne réponse qui vaut plus, par exemple 1 point pour le titre ou l’artiste, 2 pour les deux. Le Grand écran montre l’équipe et les points gagnés (« Loups · +2 points »).
 - M : mauvaise réponse, le premier est exclu pour ce morceau et les buzzers rouvrent pour les autres.
 - F : fermer les buzzers.
 
 **Avec des morceaux** (la Régie joue la musique) :
 - Espace lance le passage. Sans effet tant que le morceau en cours n’est pas conclu par B ou F (un double appui ne grille pas de morceau) ; il reprend une musique en pause sans buzz.
 - Le buzz met la musique en pause automatiquement. M la reprend là où elle s’était arrêtée (muette si le passage était fini).
-- B : fanfare et révélation sur le Grand écran. F : arrêt et révélation.
+- B, 2 ou 3 : fanfare et révélation sur le Grand écran. F : arrêt et révélation.
 - R : rejouer l’extrait depuis le début (pas pendant un buzz non jugé).
 - À la fin du passage, la musique s’arrête et les buzzers restent ouverts.
 - Z ne relance jamais la musique.

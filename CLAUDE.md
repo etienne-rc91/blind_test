@@ -33,7 +33,7 @@ Le Grand écran est en lecture seule et son contenu dépend de l'étape choisie 
 | **Partie** | Une soirée complète, préparée à l'avance dans un fichier CSV (manches, questions). | `game` |
 | **Étape** | Ce qu'affiche le Grand écran : **Installation**, **Jeu**, **Bilan**, **Fin**. Choisie dans la Régie. | `stage` (`setup`, `play`, `summary`, `final`) |
 | **Manche** | Un thème de la partie (« Cinéma », « Années 80 »), d'un type donné. Les scores sont comptés par manche. | `section` |
-| **Manche buzzer** | La première équipe qui buzze répond ; l'animateur valide (B) ou refuse (M). | type `buzzer` |
+| **Manche buzzer** | La première équipe qui buzze répond ; l'animateur valide (B ou 1, 2, 3 pour donner 1 à 3 points) ou refuse (M). | type `buzzer` |
 | **Manche QCM** | Toutes les équipes répondent A/B/C/D sur leur Buzzer avant la fin d'un compte à rebours. | type `qcm` |
 | **Morceau** | Une question d'une manche buzzer, lancée avec Espace. Dans une manche avec morceaux, le code dit `song` (`section.songs`) ; `round` reste le compteur de la manche libre. | `round` (existant), `song` |
 | **Question** | Une question d'une manche QCM, décrite dans le fichier CSV. | `question` |

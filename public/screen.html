@@ -69,6 +69,8 @@
   #videoCover[hidden], #videoStrip[hidden], #stripCover[hidden], #videoQStrip[hidden] { display: none; }
   #videoStrip { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 2vw; padding: 1.6vh 2vw; background: var(--panel); border-top: .4vh solid var(--green); animation: pop 400ms ease-out; }
   #stripCover { height: 12vh; width: 12vh; flex: none; object-fit: cover; border-radius: 1vh; }
+  #videoStrip .won { flex: none; margin: 0 0 0 auto; font-size: 4vh; font-weight: 800; color: var(--green); white-space: nowrap; }
+  #videoStrip .won:empty { display: none; }
   #videoStrip .ans { margin: 0; min-width: 0; font-size: 6vh; font-weight: 800; line-height: 1.05; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Extrait vidéo rejoué pendant le compte à rebours d’une question QCM : temps restant et propositions en bas. */
   #videoQStrip { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 2vw; padding: 1.4vh 2vw; background: var(--panel); border-top: .4vh solid var(--line); }
@@ -171,12 +173,12 @@
 <section class="stage" id="play" hidden>
   <h1 id="playTitle"><small>Blind test</small>Classement</h1>
   <div id="banner"><span class="who"></span><span class="sub"></span></div>
-  <div id="reveal" hidden><img id="revealCover" alt="" hidden><div class="txt"><p class="lbl">La réponse</p><p class="ans" id="revealAnswer"></p></div></div>
+  <div id="reveal" hidden><img id="revealCover" alt="" hidden><div class="txt"><p class="lbl" id="revealLbl">La réponse</p><p class="ans" id="revealAnswer"></p></div></div>
   <ol id="ranking"></ol>
   <div id="videoZone" hidden>
     <div id="videoStage" class="off"></div>
     <div id="videoCover" hidden></div>
-    <div id="videoStrip" hidden><img id="stripCover" alt="" hidden><p class="ans" id="stripAnswer"></p></div>
+    <div id="videoStrip" hidden><img id="stripCover" alt="" hidden><p class="ans" id="stripAnswer"></p><p class="won" id="stripWon"></p></div>
     <div id="videoQStrip" hidden><span id="vqTimer"></span><div id="vqChoices"></div></div>
   </div>
   <div id="qcmView" hidden>
@@ -423,9 +425,15 @@ function renderPlay() {
     sub.textContent = songSub() ?? `Morceau ${state.round}`;
   } else {
     who.textContent = state.round ? 'En attente du prochain morceau' : 'La partie va commencer';
-    sub.textContent = state.song ? '' : state.round ? `Morceau ${state.round} terminé` : '';
+    sub.textContent = state.song ? '' : state.round ? [`Morceau ${state.round} terminé`, wonText()].filter(Boolean).join(' · ') : '';
   }
   renderRanking();
+}
+
+// Équipe qui a trouvé et points gagnés (B, 2 ou 3 dans la Régie) : « Les Loups · +2 points ».
+function wonText() {
+  const a = state.award;
+  return a ? `${a.name} · +${a.points} point${a.points > 1 ? 's' : ''}` : '';
 }
 
 // Sous-titre du bandeau pendant qu'un morceau joue ; null = comportement des manches libres.
@@ -452,6 +460,7 @@ function renderVideoZone(view, reveal, q) {
   $('videoStrip').hidden = !strip;
   if (!strip) return;
   $('stripAnswer').textContent = reveal.answer;
+  $('stripWon').textContent = wonText();
   const img = $('stripCover');
   if (reveal.cover) { if (img.getAttribute('src') !== reveal.cover) img.src = reveal.cover; img.hidden = false; }
   else { img.removeAttribute('src'); img.hidden = true; }
@@ -462,6 +471,7 @@ function renderReveal(reveal) {
   if (!reveal) { box.hidden = true; box.dataset.sig = ''; return; }
   const sig = `${reveal.answer}|${reveal.cover ?? ''}`;
   $('revealAnswer').textContent = reveal.answer;
+  $('revealLbl').textContent = state.award ? `Trouvé par ${wonText()}` : 'La réponse';
   const img = $('revealCover');
   if (reveal.cover) {
     if (img.getAttribute('src') !== reveal.cover) img.src = reveal.cover;
@@ -541,7 +551,7 @@ function renderQuestion(q) {
     info.textContent = `${q.answeredCount}/${q.teamCount} équipe${q.teamCount > 1 ? 's ont' : ' a'} répondu`;
   } else if (q.step === 'revealed') {
     timer.textContent = `Réponse ${q.answer}`;
-    info.textContent = '';
+    info.textContent = q.points ? `+${q.points} point${q.points > 1 ? 's' : ''} par bonne réponse` : '';
   } else {
     timer.textContent = '';
     info.textContent = '';

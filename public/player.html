@@ -196,7 +196,7 @@ function renderQcm(q) {
     };
     show(); tick = setInterval(show, 250);
   } else if (q.step === 'locked') st.textContent = mine ? `Réponse enregistrée : ${mine}` : 'Temps écoulé, pas de réponse';
-  else if (q.step === 'revealed') st.textContent = !mine ? `Pas de réponse. C’était ${q.answer}` : mine === q.answer ? 'Bonne réponse !' : `Raté, c’était ${q.answer}`;
+  else if (q.step === 'revealed') st.textContent = !mine ? `Pas de réponse. C’était ${q.answer}` : mine === q.answer ? `Bonne réponse ! +${q.points ?? 1}` : `Raté, c’était ${q.answer}`;
   else if (q.step === 'intro') st.textContent = 'Regardez le grand écran…';
   else if (q.step === 'listening') st.textContent = '♪ Écoutez l’extrait…';
   else if (q.step === 'question' || q.step === 'choices') st.textContent = 'Regardez le grand écran, préparez-vous…';

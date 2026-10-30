@@ -35,12 +35,12 @@
   @keyframes flash { from { transform: scale(1.03); } to { transform: scale(1); } }
   @media (prefers-reduced-motion: reduce) { #first.flash { animation: none; } }
 
-  .controls { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .controls { display: grid; grid-template-columns: 1fr 1.2fr .6fr .6fr 1fr 1fr 1fr; gap: 12px; }
   .controls button { font: inherit; font-size: 1.15rem; font-weight: 700; padding: 16px 10px; border-radius: 12px; border: 2px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
   .controls button kbd { display: block; font: inherit; font-size: .85rem; font-weight: 400; color: var(--muted); margin-top: 4px; }
   #bOpen { background: var(--ink); color: var(--bg); border-color: var(--ink); }
   #bOpen kbd { color: inherit; opacity: .7; }
-  #bOk { border-color: var(--green); color: var(--green); }
+  #bOk, #bOk2, #bOk3, #qOk2, #qOk3 { border-color: var(--green); color: var(--green); }
   #bKo { border-color: var(--red); color: var(--red); }
   button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
   button:disabled { opacity: .4; cursor: default; }
@@ -68,7 +68,11 @@
   #qAnswers li.none { color: var(--muted); border-style: dashed; }
   #qAnswers li.good { border-color: var(--green); }
   #qAnswers li.bad { border-color: var(--red); }
-  #qMain { flex: none; font: inherit; font-size: 1.4rem; font-weight: 800; padding: 18px; border-radius: 14px; border: 0; background: var(--ink); color: var(--bg); cursor: pointer; }
+  #qMainRow { flex: none; display: flex; gap: 12px; }
+  #qMainRow button { font: inherit; font-size: 1.4rem; font-weight: 800; padding: 18px 24px; border-radius: 14px; border: 2px solid var(--line); background: var(--panel); cursor: pointer; }
+  #qMainRow button kbd { font: inherit; font-size: .9rem; font-weight: 400; opacity: .7; margin-left: 10px; }
+  #qMainRow button[hidden] { display: none; }
+  #qMain { flex: 1; font: inherit; font-size: 1.4rem; font-weight: 800; padding: 18px; border-radius: 14px; border: 0; background: var(--ink); color: var(--bg); cursor: pointer; }
   #qMain kbd { font: inherit; font-size: .9rem; font-weight: 400; opacity: .7; margin-left: 10px; }
   /* Extrait de la question QCM : bloc compact entre la question et le bouton principal. */
   #qExtract { flex: none; background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 10px 16px; display: flex; flex-direction: column; gap: 6px; }
@@ -179,7 +183,9 @@
     <div id="first"><div class="who">Prêt</div><div class="sub">Ouvrez les buzzers pour lancer le premier morceau</div></div>
     <div class="controls">
       <button id="bOpen">Nouveau morceau<kbd>Espace</kbd></button>
-      <button id="bOk">Bonne réponse<kbd>B</kbd></button>
+      <button id="bOk">Bonne réponse +1<kbd>B ou 1</kbd></button>
+      <button id="bOk2" title="Bonne réponse, 2 points">+2<kbd>2</kbd></button>
+      <button id="bOk3" title="Bonne réponse, 3 points">+3<kbd>3</kbd></button>
       <button id="bKo">Mauvaise réponse<kbd>M</kbd></button>
       <button id="bClose">Fermer<kbd>F</kbd></button>
       <button id="bUndo" title="Annuler la dernière action de l’animateur">Annuler<kbd>Z</kbd></button>
@@ -205,7 +211,11 @@
           <button id="qxSkip" title="Couper l’extrait et afficher la question sur le Grand écran">Afficher la question</button>
         </div>
       </div>
-      <button id="qMain"></button>
+      <div id="qMainRow">
+        <button id="qMain"></button>
+        <button id="qOk2" title="Révéler la réponse : 2 points par bonne réponse" hidden>+2<kbd>2</kbd></button>
+        <button id="qOk3" title="Révéler la réponse : 3 points par bonne réponse" hidden>+3<kbd>3</kbd></button>
+      </div>
     </div>
     <span id="sound">Le son s’active au premier clic ou à la première touche.</span>
   </section>
@@ -288,7 +298,11 @@ for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, () => { if (pl
 // ----- Actions -----
 const act = (ev, payload) => socket.emit(ev, payload);
 $('bOpen').onclick = () => act('host:open');
-$('bOk').onclick = () => act('host:correct');
+// Bonne réponse : B ou 1 donne 1 point, 2 et 3 en donnent plus (titre et artiste, par exemple).
+const correct = (points) => act('host:correct', { points });
+$('bOk').onclick = () => correct(1);
+$('bOk2').onclick = () => correct(2);
+$('bOk3').onclick = () => correct(3);
 $('bKo').onclick = () => act('host:wrong');
 $('bClose').onclick = () => act('host:close');
 $('bUndo').onclick = () => act('host:undo');
@@ -312,7 +326,7 @@ const QCM_NEXT = {
   question: { action: 'show-choices', label: 'Afficher les propositions' },
   choices: { action: 'start', label: 'Lancer le compte à rebours' },
   countdown: { action: null, label: 'Compte à rebours en cours…' },
-  locked: { action: 'reveal', label: 'Révéler la réponse' },
+  locked: { action: 'reveal', label: 'Révéler la réponse (+1)' },
   revealed: { action: 'next', label: 'Question suivante' },
 };
 const STEP_LABEL = {
@@ -325,23 +339,33 @@ function qcmNext() {
   return QCM_NEXT[q.step].action;
 }
 $('qMain').onclick = () => { const a = qcmNext(); if (a) act('host:qcm', { action: a }); };
+// Révéler en donnant 2 ou 3 points par bonne réponse (le bouton principal en donne 1).
+const reveal = (points) => { if (state?.qcm?.step === 'locked') act('host:qcm', { action: 'reveal', points }); };
+$('qOk2').onclick = () => reveal(2);
+$('qOk3').onclick = () => reveal(3);
 $('cdSec').onchange = () => act('host:countdown', { seconds: Number($('cdSec').value) });
 let qDeadline = 0, qTick = null;
 
 addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.repeat) return;
   const k = e.key.toLowerCase();
+  // Chiffres 1 à 3 : par la touche physique, car sur un clavier AZERTY la rangée du haut donne & é " sans Maj.
+  const digit = /^(Digit|Numpad)[1-3]$/.test(e.code) ? Number(e.code.slice(-1)) : /^[1-3]$/.test(e.key) ? Number(e.key) : null;
+  if (digit && (e.metaKey || e.ctrlKey || e.altKey)) return;
   if (k === 'z') return act('host:undo');
   if (state?.qcm) {
     // Espace ne fait rien en QCM, mais ne doit pas non plus « cliquer » le bouton qui a le focus (+, ✕…).
     if (k === ' ') e.preventDefault();
     if (k === 'enter') { e.preventDefault(); $('qMain').click(); }
+    else if (digit === 1) { if (state.qcm.step === 'locked') $('qMain').click(); }
+    else if (digit) reveal(digit);
     else if (k === 'r' && state.song && !e.metaKey && !e.ctrlKey && !e.altKey) act('host:replay');   // Cmd+R recharge la page
     return;
   }
   if (k === ' ') { e.preventDefault(); act('host:open'); }
   else if (k === 'r') { if (state?.song && !e.metaKey && !e.ctrlKey && !e.altKey) act('host:replay'); }   // Cmd+R recharge la page
-  else if (k === 'b') act('host:correct');
+  else if (k === 'b') correct(1);
+  else if (digit) correct(digit);
   else if (k === 'm') act('host:wrong');
   else if (k === 'f') act('host:close');
 });
@@ -609,8 +633,9 @@ function renderQcm(q) {
   const nx = QCM_NEXT[q.step];
   $('qMain').innerHTML = '';
   $('qMain').append(done ? 'Manche terminée' : q.step === 'idle' && q.hasExtract ? 'Afficher la page de la question' : nx.label);
-  if (qcmNext()) { const kb = document.createElement('kbd'); kb.textContent = 'Entrée'; $('qMain').append(kb); }
+  if (qcmNext()) { const kb = document.createElement('kbd'); kb.textContent = q.step === 'locked' ? 'Entrée ou 1' : 'Entrée'; $('qMain').append(kb); }
   $('qMain').disabled = !qcmNext();
+  $('qOk2').hidden = $('qOk3').hidden = q.step !== 'locked';
   renderExtract(q, done);
 }
 // Extrait de la question en cours : source, état, avancement, Rejouer (R) et « Afficher la question » pendant l’écoute.
@@ -747,10 +772,11 @@ function render() {
     sub.textContent = `Morceau ${state.round}` + (ex ? ` · ${ex} équipe${ex > 1 ? 's' : ''} exclue${ex > 1 ? 's' : ''}` : '');
   } else {
     who.textContent = 'Fermé';
-    sub.textContent = state.round ? `Morceau ${state.round} terminé` : 'Ouvrez les buzzers pour lancer le premier morceau';
+    const won = state.award ? ` · ${state.award.name} +${state.award.points}` : '';
+    sub.textContent = state.round ? `Morceau ${state.round} terminé${won}` : 'Ouvrez les buzzers pour lancer le premier morceau';
   }
 
-  $('bOk').disabled = $('bKo').disabled = state.phase !== 'buzzed';
+  $('bOk').disabled = $('bOk2').disabled = $('bOk3').disabled = $('bKo').disabled = state.phase !== 'buzzed';
   $('bClose').disabled = state.phase === 'closed';
   $('bUndo').disabled = !state.canUndo;
   renderOpenButton();
