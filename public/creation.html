@@ -701,9 +701,9 @@ async function uploadClips(cfg) {
   $('addFile').textContent = UPLOADS.file.label; $('addVideo').textContent = UPLOADS.video.label;
   $('addErr').textContent = errors.join(' ');
 }
-$('addFile').onclick = () => { if (confirmReplace()) $('songFile').click(); };
+$('addFile').onclick = () => { showAddPanel(null); if (confirmReplace()) $('songFile').click(); };
 $('songFile').onchange = () => uploadClips(UPLOADS.file);
-$('addVideo').onclick = () => { if (confirmReplace()) $('videoFile').click(); };
+$('addVideo').onclick = () => { showAddPanel(null); if (confirmReplace()) $('videoFile').click(); };
 $('videoFile').onchange = () => uploadClips(UPLOADS.video);
 
 $('delSong').onclick = () => {
@@ -943,11 +943,23 @@ function renderSpotify() {
   else box.append(el('span', 'on', '● Spotify connecté'));
   if (st && location.hostname === 'localhost') box.append(el('span', null, ' Ouvrez cette page sur 127.0.0.1 pour garder la connexion Spotify.'));
 }
+// Un seul panneau d’ajout (Spotify ou YouTube) ouvert à la fois ; il se referme une fois le morceau ajouté.
+function showAddPanel(which) {
+  const sp = which === 'spotify', yt = which === 'youtube';
+  if (!sp && !$('spotifyPanel').hidden) {          // en refermant Spotify, on repart d’une recherche vide
+    searchSeq += 1; clearTimeout(searchTimer);
+    $('spQuery').value = ''; $('spResults').innerHTML = ''; $('spErr').textContent = '';
+  }
+  if (!yt) $('ytErr').textContent = '';
+  $('spotifyPanel').hidden = !sp;
+  $('youtubePanel').hidden = !yt;
+  $('addSpotify').setAttribute('aria-expanded', String(sp));
+  $('addYoutube').setAttribute('aria-expanded', String(yt));
+}
 $('addSpotify').onclick = () => {
-  const panel = $('spotifyPanel');
-  panel.hidden = !panel.hidden;
+  showAddPanel($('spotifyPanel').hidden ? 'spotify' : null);
   renderSpotify();
-  if (!panel.hidden) refreshSpotify().then(() => { if (!$('spQuery').hidden) $('spQuery').focus(); });
+  if (!$('spotifyPanel').hidden) refreshSpotify().then(() => { if (!$('spQuery').hidden) $('spQuery').focus(); });
 };
 // Retour de l'onglet de connexion : l'état a peut-être changé.
 addEventListener('focus', () => { if (!$('spotifyPanel').hidden) refreshSpotify(); });
@@ -995,15 +1007,14 @@ function addSpotifySong(t) {
   const end = t.durationSec > 0 ? Math.max(1, Math.min(DEFAULT_PASSAGE, t.durationSec)) : DEFAULT_PASSAGE;
   const clip = { source: 'spotify', ref: t.id, start: 0, end };
   if (target.type === 'buzzer') clip.answer = `${t.artists} — ${t.name}`.slice(0, 120);
+  showAddPanel(null);
   setClip(clip, target);
 }
 
 // ----- YouTube : lien collé, titre demandé au serveur, lecture vérifiée dans l’aperçu avant d’ajouter -----
 $('addYoutube').onclick = () => {
-  const panel = $('youtubePanel');
-  panel.hidden = !panel.hidden;
-  $('addYoutube').setAttribute('aria-expanded', String(!panel.hidden));
-  if (!panel.hidden) $('ytLink').focus();
+  showAddPanel($('youtubePanel').hidden ? 'youtube' : null);
+  if (!$('youtubePanel').hidden) $('ytLink').focus();
 };
 $('ytLink').onkeydown = (e) => { if (e.key === 'Enter') $('ytAdd').click(); };
 $('ytAdd').onclick = async () => {
@@ -1023,6 +1034,7 @@ $('ytAdd').onclick = async () => {
     const clip = { source: 'youtube', ref: info.id, start: 0, end: defaultEnd(d) };
     if (target.type === 'buzzer') clip.answer = (info.title || '').trim().slice(0, 120);
     $('ytLink').value = '';
+    showAddPanel(null);
     setClip(clip, target);
   } catch (e) {
     $('ytErr').textContent = e.message;
