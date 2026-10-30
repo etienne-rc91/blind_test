@@ -242,6 +242,7 @@ $('back').href = `/parties?key=${enc(key)}`;
 let name = params.get('partie');           // nom enregistré (null : nouvelle partie jamais enregistrée)
 let sections = [];
 let selSection = -1, selQuestion = -1, selSong = -1;
+let addPanelFor = {};                      // manche et question pour lesquelles le panneau d’ajout est affiché
 let dirty = false;
 
 // Passage édité par le lecteur et la barre de temps : le morceau choisi (manche buzzer)
@@ -453,6 +454,9 @@ function renderSongs(s) {
 function render() {
   renderSections();
   const s = sections[selSection];
+  // Autre manche ou autre question : le panneau Spotify ou YouTube ouvert ne la concerne pas, on le referme.
+  const target = clipTarget();
+  if (target.s !== addPanelFor.s || target.q !== addPanelFor.q) { addPanelFor = target; showAddPanel(null); }
   $('noSection').hidden = !!s;
   $('sectionEditor').hidden = !s;
   const m = editedClip();
